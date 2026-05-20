@@ -26,6 +26,7 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
+    // ── Prenesi OPSI PRS CSV ──
     const res = await fetch(PRS_URL);
 
     if (!res.ok || !res.body) {
@@ -33,7 +34,7 @@ Deno.serve(async (req) => {
         ok: false,
         error: "PRS download failed",
         status: res.status,
-        statusText: res.statusText
+        statusText: res.statusText,
       }, 500);
     }
 
@@ -51,6 +52,7 @@ Deno.serve(async (req) => {
 
     const targetEnd = offset + limit;
 
+    // ── Streaming CSV parse ──
     while (seen < targetEnd) {
       const { value, done } = await reader.read();
 
@@ -65,6 +67,7 @@ Deno.serve(async (req) => {
       for (const line of lines) {
         if (!line.trim()) continue;
 
+        // Prva vrstica = headerji
         if (headers.length === 0) {
           headers = parseCsvLine(line);
           continue;
@@ -72,6 +75,7 @@ Deno.serve(async (req) => {
 
         if (seen >= targetEnd) break;
 
+        // Preskoči do offset
         if (seen < offset) {
           seen++;
           continue;
@@ -90,6 +94,7 @@ Deno.serve(async (req) => {
         batch.push(record);
         imported++;
 
+        // Flush batch
         if (batch.length >= BATCH_SIZE) {
           const result = await flushBatch(supabase, batch);
 
@@ -97,13 +102,8 @@ Deno.serve(async (req) => {
             return json({
               ok: false,
               error: result.error,
-              offset,
-              limit,
-              seen,
-              imported,
-              skipped,
-              batches,
-              failedBatchSize: batch.length
+              progress: { offset, limit, seen, imported, skipped, batches },
+              failedBatchSize: batch.length,
             }, 500);
           }
 
@@ -113,6 +113,7 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Flush preostale zapise
     if (batch.length > 0) {
       const result = await flushBatch(supabase, batch);
 
@@ -120,13 +121,8 @@ Deno.serve(async (req) => {
         return json({
           ok: false,
           error: result.error,
-          offset,
-          limit,
-          seen,
-          imported,
-          skipped,
-          batches,
-          failedBatchSize: batch.length
+          progress: { offset, limit, seen, imported, skipped, batches },
+          failedBatchSize: batch.length,
         }, 500);
       }
 
@@ -144,16 +140,15 @@ Deno.serve(async (req) => {
       batches,
       batchSize: BATCH_SIZE,
       nextOffset: offset + imported,
-      headers
+      hasMore: seen >= targetEnd,
+      headers,
     });
-
   } catch (err) {
-    return json({
-      ok: false,
-      error: String(err)
-    }, 500);
+    return json({ ok: false, error: String(err) }, 500);
   }
 });
+
+// ── Helpers ──────────────────────────────────────
 
 async function safeJson(req: Request) {
   try {
@@ -169,50 +164,49 @@ async function flushBatch(
 ) {
   const { error } = await supabase
     .from("prs_cache")
-    .upsert(batch, {
-      onConflict: "registration_number"
-    });
+    .upsert(batch, { onConflict: "registration_number" });
 
-  return {
-    error: error ? error.message : null
-  };
+  return { error: error ? error.message : null };
 }
 
 function mapPrsRow(headers: string[], cols: string[]) {
   const row: Record<string, string> = {};
-
   headers.forEach((h, i) => {
     row[h.trim()] = cols[i]?.trim() || "";
   });
 
+  // ── Sestavitev naslova ──
   const street = row["Ulica"] || "";
   const houseNo = row["Hišna št"] || row["Hišna št "] || "";
-  const houseAdd =
+  const houseAdd = (
     row["Hišna št dodatek"] ||
     row["Hišna št  dodatek"] ||
-    "";
+    ""
+  ).replace(/"/g, "");
 
   const postCode = row["Poštna št"] || row["Poštna št "] || "";
   const post = row["Pošta"] || "";
 
   const address = [
-    [street, houseNo, houseAdd].filter(Boolean).join(" "),
-    [postCode, post].filter(Boolean).join(" ")
-  ].filter(Boolean).join(", ");
+    [street, houseNo, houseAdd].filter(Boolean).join(" ").trim(),
+    [postCode, post].filter(Boolean).join(" "),
+  ]
+    .filter(Boolean)
+    .join(", ");
 
   return {
-    registration_number: row["Matična številka"],
-    company_name: row["Popolno ime"],
+    registration_number: row["Matična številka"] || "",
+    company_name: row["Popolno ime"] || "",
     tax_number: null,
-    legal_form: row["Pravnoorganizacijska oblika"],
-    address,
-    municipality: post,
+    legal_form: row["Pravnoorganizacijska oblika"] || null,
+    address: address || null,
+    municipality: post || null,
     region: null,
     main_activity_code: null,
     main_activity_name: null,
     source: "opsi-prs",
     raw_payload: row,
-    updated_at: new Date().toISOString()
+    updated_at: new Date().toISOString(),
   };
 }
 
@@ -225,17 +219,20 @@ function parseCsvLine(line: string): string[] {
     const char = line[i];
     const next = line[i + 1];
 
+    // Escaped quote
     if (char === '"' && next === '"') {
       current += '"';
       i++;
       continue;
     }
 
+    // Toggle quoting
     if (char === '"') {
       inQuotes = !inQuotes;
       continue;
     }
 
+    // Field separator (zunaj narekovajev)
     if (char === "," && !inQuotes) {
       result.push(current);
       current = "";
@@ -252,8 +249,6 @@ function parseCsvLine(line: string): string[] {
 function json(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
     status,
-    headers: {
-      "Content-Type": "application/json"
-    }
+    headers: { "Content-Type": "application/json" },
   });
 }
