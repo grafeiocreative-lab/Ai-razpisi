@@ -1,0 +1,106 @@
+import { createClient } from "npm:@supabase/supabase-js@2";
+
+Deno.serve(async (req) => {
+  try {
+    if (req.method !== "POST") {
+      return json({ error: "Method not allowed" }, 405);
+    }
+
+    const body = await req.json();
+    const registrationNumber = String(body.registration_number || "").trim();
+
+    if (!registrationNumber) {
+      return json({ error: "Manjka registration_number" }, 400);
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+    if (!supabaseUrl || !serviceRoleKey) {
+      return json({ error: "Manjkajo Supabase env podatki" }, 500);
+    }
+
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+    const { data: prsRecord, error: prsError } = await supabase
+      .from("prs_cache")
+      .select("*")
+      .eq("registration_number", registrationNumber)
+      .single();
+
+    if (prsError || !prsRecord) {
+      return json({
+        ok: false,
+        status: "not_found",
+        message: "Podjetje ni najdeno v lokalnem PRS cache.",
+        registration_number: registrationNumber
+      }, 404);
+    }
+
+    const companyPayload = {
+      company_name: prsRecord.company_name,
+      registration_number: prsRecord.registration_number,
+      tax_number: prsRecord.tax_number,
+      legal_form: prsRecord.legal_form,
+      address: prsRecord.address,
+      municipality: prsRecord.municipality,
+      region: prsRecord.region,
+      main_activity_code: prsRecord.main_activity_code,
+      main_activity_name: prsRecord.main_activity_name,
+      source: "prs_cache",
+      source_payload: prsRecord.raw_payload
+    };
+
+    const { data: existingCompany } = await supabase
+      .from("companies")
+      .select("id")
+      .eq("registration_number", registrationNumber)
+      .maybeSingle();
+
+    let company;
+    let dbError;
+
+    if (existingCompany?.id) {
+      const result = await supabase
+        .from("companies")
+        .update(companyPayload)
+        .eq("id", existingCompany.id)
+        .select()
+        .single();
+
+      company = result.data;
+      dbError = result.error;
+    } else {
+      const result = await supabase
+        .from("companies")
+        .insert(companyPayload)
+        .select()
+        .single();
+
+      company = result.data;
+      dbError = result.error;
+    }
+
+    if (dbError) {
+      return json({ error: dbError.message }, 500);
+    }
+
+    return json({
+      ok: true,
+      status: existingCompany?.id ? "updated" : "inserted",
+      company
+    }, 200);
+
+  } catch (err) {
+    return json({ error: String(err) }, 500);
+  }
+});
+
+function json(payload: unknown, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: {
+      "Content-Type": "application/json"
+    }
+  });
+}
