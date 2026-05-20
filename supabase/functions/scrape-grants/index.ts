@@ -5,7 +5,7 @@ const PAGES = [
   { url: "https://evropskasredstva.si/razpisi/napovedan", status: "upcoming" },
 ];
 
-Deno.serve(async (req) => {
+Deno.serve(async () => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -15,12 +15,21 @@ Deno.serve(async (req) => {
     }
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
-    const results = { inserted: 0, updated: 0, skipped: 0, errors: [] as string[] };
+
+    const results = {
+      inserted: 0,
+      updated: 0,
+      skipped: 0,
+      parsed: 0,
+      errors: [] as string[],
+    };
 
     for (const page of PAGES) {
       try {
         const res = await fetch(page.url, {
-          headers: { "User-Agent": "AI-Razpisi-Bot/1.0 (grant aggregator)" },
+          headers: {
+            "User-Agent": "AI-Razpisi-Bot/1.0 grant aggregator",
+          },
         });
 
         if (!res.ok) {
@@ -31,17 +40,18 @@ Deno.serve(async (req) => {
         const html = await res.text();
         const grants = parseGrants(html, page.status);
 
+        results.parsed += grants.length;
+
         for (const grant of grants) {
           try {
-            // Preveri ali razpis že obstaja (po naslovu)
-            const { data: existing } = await supabase
-              .from("grants")
-              .select("id")
-              .eq("title", grant.title)
-              .maybeSingle();
+            if (!grant.title) {
+              results.skipped++;
+              continue;
+            }
+
+            const existing = await findExistingGrant(supabase, grant);
 
             if (existing?.id) {
-              // Posodobi obstoječi
               const { error } = await supabase
                 .from("grants")
                 .update(grant)
@@ -53,7 +63,6 @@ Deno.serve(async (req) => {
                 results.updated++;
               }
             } else {
-              // Vstavi nov
               const { error } = await supabase
                 .from("grants")
                 .insert(grant);
@@ -65,7 +74,7 @@ Deno.serve(async (req) => {
               }
             }
           } catch (err) {
-            results.errors.push(`"${grant.title}": ${String(err)}`);
+            results.errors.push(`Grant "${grant.title}": ${String(err)}`);
           }
         }
       } catch (err) {
@@ -73,11 +82,10 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── Posodobi health check ──
     await supabase.from("data_source_health").upsert({
       source: "evropskasredstva",
-      last_success: results.errors.length === 0 ? new Date().toISOString() : undefined,
-      last_failure: results.errors.length > 0 ? new Date().toISOString() : undefined,
+      last_success: results.errors.length === 0 ? new Date().toISOString() : null,
+      last_failure: results.errors.length > 0 ? new Date().toISOString() : null,
       failure_count: results.errors.length,
       last_error: results.errors[0] || null,
       updated_at: new Date().toISOString(),
@@ -87,19 +95,38 @@ Deno.serve(async (req) => {
       ok: results.errors.length === 0,
       ...results,
     });
+
   } catch (err) {
     return json({ ok: false, error: String(err) }, 500);
   }
 });
 
-// ═══════════════════════════════════════════════════
-//  HTML PARSER
-// ═══════════════════════════════════════════════════
+async function findExistingGrant(
+  supabase: ReturnType<typeof createClient>,
+  grant: Record<string, unknown>
+) {
+  if (grant.source_url) {
+    const { data } = await supabase
+      .from("grants")
+      .select("id")
+      .eq("source_url", grant.source_url)
+      .maybeSingle();
+
+    if (data) return data;
+  }
+
+  const { data } = await supabase
+    .from("grants")
+    .select("id")
+    .eq("title", grant.title)
+    .maybeSingle();
+
+  return data;
+}
 
 function parseGrants(html: string, defaultStatus: string): Record<string, unknown>[] {
   const grants: Record<string, unknown>[] = [];
 
-  // Odstrani HTML tage, ohrani strukturo
   const text = html
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
@@ -112,10 +139,10 @@ function parseGrants(html: string, defaultStatus: string): Record<string, unknow
     .replace(/&gt;/g, ">")
     .replace(/&euro;/g, "€")
     .replace(/&#8211;/g, "–")
+    .replace(/\s+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 
-  // Razdeli po vzorcu "Aktualno" ali "Napovedano" (status oznaka pred naslovom)
   const blocks = text.split(/(?=(?:Aktualno|Napovedano|Zaključeno)\s+[A-ZŽŠČĆĐ])/i);
 
   for (const block of blocks) {
@@ -124,36 +151,65 @@ function parseGrants(html: string, defaultStatus: string): Record<string, unknow
     const title = extractTitle(block);
     if (!title) continue;
 
-    const grant: Record<string, unknown> = {
+    const sourceUrl =
+      extractUrl(block, "Povezava do strani") ||
+      extractUrl(block, "Povezava do dokumentacije");
+
+    const rawSummary =
+      extractField(block, "Namen") ||
+      extractField(block, "Opis upravičenih prijaviteljev");
+
+    const applicantText =
+      extractField(block, "Opis upravičenih prijaviteljev") ||
+      extractField(block, "Upravičeni prijavitelji");
+
+    const grant = {
       title,
-      funder: extractField(block, "Razpisovalec"),
-      programme: extractField(block, "Program EU"),
-      description_raw: extractField(block, "Namen") ||
-                       extractField(block, "Opis upravičenih prijaviteljev") || null,
-      eligible_applicants: extractField(block, "Opis upravičenih prijaviteljev") ||
-                           extractField(block, "Upravičeni prijavitelji") || null,
-      amount_total: parseAmount(extractField(block, "Razpisana vrednost")),
-      amount_eu: parseAmount(extractField(block, "Prispevek EU")),
-      policy_goal: extractField(block, "Cilj politike oz. specifični cilj") ||
-                   extractField(block, "Cilj politike") || null,
-      source_url: extractUrl(block, "Povezava do strani") ||
-                  extractUrl(block, "Povezava do dokumentacije") || null,
-      valid_from: parseDate(extractField(block, "Datum objave javnega razpisa") ||
-                            extractField(block, "Veljavno")),
-      deadline: parseDeadlineDate(
+      provider: extractField(block, "Razpisovalec"),
+      source_url: sourceUrl,
+      status: defaultStatus,
+
+      published_at: parseDate(
+        extractField(block, "Datum objave javnega razpisa") ||
+        extractField(block, "Veljavno")
+      ),
+
+      deadline_at: parseDeadlineDate(
         extractField(block, "Rok za prijavo na javni razpis") ||
         extractField(block, "Veljavno")
       ),
-      status: defaultStatus,
-      region_restriction: extractField(block, "Geografsko območje") || null,
-      funding_type: "Nepovratna sredstva",
-      is_de_minimis: false,
-      tags: extractTags(block),
-      raw_data: { source: "evropskasredstva.si", scraped_at: new Date().toISOString() },
+
+      is_de_minimis: block.toLowerCase().includes("de minimis"),
+      max_aid_amount: parseAmount(extractField(block, "Razpisana vrednost")),
+      funding_rate: null,
+
+      eligible_company_sizes: extractCompanySizes(block),
+      eligible_regions: extractRegions(block),
+      eligible_sectors: extractTags(block),
+      eligible_costs: [],
+      investment_types: extractTags(block),
+
+      raw_summary: rawSummary,
+      plain_language_summary: null,
+      requirements: applicantText,
+      required_documents: [],
+
+      raw_payload: {
+        source: "evropskasredstva.si",
+        scraped_at: new Date().toISOString(),
+        programme: extractField(block, "Program EU"),
+        amount_eu: parseAmount(extractField(block, "Prispevek EU")),
+        policy_goal:
+          extractField(block, "Cilj politike oz. specifični cilj") ||
+          extractField(block, "Cilj politike"),
+        region_restriction: extractField(block, "Geografsko območje"),
+        block
+      },
+
+      last_checked_at: new Date().toISOString()
     };
 
-    // Preskoči brez naslova ali brez vsaj enega uporabnega polja
-    if (grant.title && (grant.funder || grant.amount_total || grant.source_url)) {
+    if (grant.title && (grant.provider || grant.max_aid_amount || grant.source_url)) {
       grants.push(grant);
     }
   }
@@ -162,28 +218,31 @@ function parseGrants(html: string, defaultStatus: string): Record<string, unknow
 }
 
 function extractTitle(block: string): string | null {
-  // Naslov je prva dolga vrstica po statusu (Aktualno/Napovedano)
   const lines = block.split("\n").map((l) => l.trim()).filter(Boolean);
 
-  for (let i = 0; i < Math.min(lines.length, 5); i++) {
+  for (let i = 0; i < Math.min(lines.length, 8); i++) {
     const line = lines[i];
-    // Preskoči status oznake in kratke vrstice
+
     if (/^(Aktualno|Napovedano|Zaključeno|Manj|Več|Izvozi)/i.test(line)) continue;
     if (line.length < 10) continue;
-    // Preskoči filter oznake
     if (/^(Razpisovalec|Program EU|Razpisana|Prispevek|Veljavno|Rok|Cilj|Opis|Datum|Povezava|Namen)/i.test(line)) continue;
+
     return line.substring(0, 500);
   }
+
   return null;
 }
 
 function extractField(block: string, label: string): string | null {
-  // Poišči vzorec: "Label" sledi besedilo do naslednje oznake
+  const nextLabels =
+    "Razpisovalec|Program EU|Razpisana vrednost|Prispevek EU|Veljavno|Rok za prijavo|Cilj politike|Opis upravičenih|Datum objave|Povezava do|Namen|Geografsko";
+
   const regex = new RegExp(
     label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") +
-    "\\s*[:\\n]?\\s*(.+?)(?=\\n\\s*(?:Razpisovalec|Program EU|Razpisana vrednost|Prispevek EU|Veljavno|Rok za prijavo|Cilj politike|Opis upravičenih|Datum objave|Povezava do|Namen|Geografsko|$))",
+    "\\s*[:\\n]?\\s*(.+?)(?=\\n\\s*(?:" + nextLabels + "|$))",
     "is"
   );
+
   const match = block.match(regex);
   return match ? match[1].trim().replace(/\s+/g, " ") : null;
 }
@@ -191,41 +250,79 @@ function extractField(block: string, label: string): string | null {
 function extractUrl(block: string, label: string): string | null {
   const field = extractField(block, label);
   if (!field) return null;
+
   const urlMatch = field.match(/(https?:\/\/[^\s"<>]+)/);
   return urlMatch ? urlMatch[1] : null;
 }
 
 function parseAmount(text: string | null): number | null {
   if (!text) return null;
-  // Odstrani EUR, €, presledke, zamenjaj vejico s piko
-  const clean = text
-    .replace(/EUR/gi, "")
-    .replace(/€/g, "")
+
+  const match = text.match(/[\d\s.,]+/);
+  if (!match) return null;
+
+  const clean = match[0]
     .replace(/\s/g, "")
     .replace(/\./g, "")
     .replace(",", ".")
     .trim();
+
   const num = parseFloat(clean);
-  return isNaN(num) ? null : num;
+  return Number.isFinite(num) ? num : null;
 }
 
 function parseDate(text: string | null): string | null {
   if (!text) return null;
-  // Vzorec: dd.mm.yyyy ali dd. mm. yyyy
+
   const match = text.match(/(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})/);
   if (!match) return null;
+
   const [, d, m, y] = match;
   return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
 }
 
 function parseDeadlineDate(text: string | null): string | null {
   if (!text) return null;
-  // Poišči zadnji datum v besedilu (pri "Od - Do" vzame Do)
+
   const matches = [...text.matchAll(/(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})/g)];
   if (matches.length === 0) return null;
+
   const last = matches[matches.length - 1];
   const [, d, m, y] = last;
-  return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+
+  return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}T23:59:59+01:00`;
+}
+
+function extractCompanySizes(block: string): string[] {
+  const lower = block.toLowerCase();
+  const sizes: string[] = [];
+
+  if (lower.includes("mikro")) sizes.push("micro");
+  if (lower.includes("mala podjetja") || lower.includes("mala in srednja")) sizes.push("small");
+  if (lower.includes("srednja podjetja") || lower.includes("mala in srednja")) sizes.push("medium");
+  if (lower.includes("velika podjetja")) sizes.push("large");
+  if (lower.includes("msp")) sizes.push("micro", "small", "medium");
+
+  return [...new Set(sizes)];
+}
+
+function extractRegions(block: string): string[] {
+  const regions = [
+    "Pomurska",
+    "Podravska",
+    "Koroška",
+    "Savinjska",
+    "Zasavska",
+    "Posavska",
+    "Jugovzhodna Slovenija",
+    "Osrednjeslovenska",
+    "Gorenjska",
+    "Primorsko-notranjska",
+    "Goriška",
+    "Obalno-kraška"
+  ];
+
+  return regions.filter((r) => block.toLowerCase().includes(r.toLowerCase()));
 }
 
 function extractTags(block: string): string[] {
@@ -251,6 +348,8 @@ function extractTags(block: string): string[] {
 function json(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload, null, 2), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json"
+    },
   });
 }
