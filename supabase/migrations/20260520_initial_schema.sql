@@ -1,0 +1,3 @@
+-- Initial schema snapshot
+-- Generated manually from Supabase public schema
+-- 2026-05-20
