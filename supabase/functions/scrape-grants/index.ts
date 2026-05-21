@@ -44,10 +44,19 @@ Deno.serve(async () => {
 
         for (const grant of grants) {
           try {
-            if (!grant.title) {
-              results.skipped++;
-              continue;
-            }
+
+        
+            grant.source_url = String(
+              grant.source_url ||
+              `evropskasredstva:auto:${slugify(
+                String(grant.title || "untitled")
+            )}`
+  );
+
+  if (!grant.title || !grant.source_url) {
+    results.skipped++;
+    continue;
+  }
 
             const existing = await findExistingGrant(supabase, grant);
 
