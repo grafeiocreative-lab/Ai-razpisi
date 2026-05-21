@@ -354,6 +354,21 @@ function extractTags(block: string): string[] {
   return [...new Set(tags)];
 }
 
+function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/č/g, "c")
+    .replace(/š/g, "s")
+    .replace(/ž/g, "z")
+    .replace(/ć/g, "c")
+    .replace(/đ/g, "d")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .substring(0, 180);
+}
+
 function json(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload, null, 2), {
     status,
