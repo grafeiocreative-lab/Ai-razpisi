@@ -198,9 +198,9 @@ Deno.serve(async (req) => {
 
         gridIds: [...html3.matchAll(/id="([^"]*(?:grid|Grid|gv|GV|dxgv)[^"]*)"/gi)]
           .map(m => m[1])
-          .slice(0,20),
+          .slice(0,5),
 
-         gridSnippets: [...html3.matchAll(/(<[^>]+id="[^"]*(?:grid|Grid|dxgv)[^"]*"[\s\S]{0,2000})/gi)]
+         gridSnippets: [...html3.matchAll(/(<[^>]+id="[^"]*(?:grid|Grid|dxgv)[^"]*"[\s\S]{0,3000})/gi)]
            .map(m => m[1])
            .slice(0,5),
 
