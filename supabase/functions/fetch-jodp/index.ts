@@ -261,6 +261,16 @@ if (debug) {
     htmlLength: html4.length,
     hasTable: html4.includes("<table"),
     tablesFound: (html4.match(/<table/gi) || []).length,
+
+    dtoRows: [...html4.matchAll(
+      /<tr[^>]*id="MainContent_pnlDTO_gvDTO_DXDataRow\d+"[\s\S]*?<\/tr>/gi
+    )]
+      .map((m, i) => ({
+        index: i,
+        snippet: m[0].substring(0, 2000)
+      }))
+      .slice(0,5),
+
     tailHtml: html4.substring(html4.length - 6000),
   };
 }
