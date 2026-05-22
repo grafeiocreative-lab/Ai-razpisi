@@ -211,8 +211,18 @@ Deno.serve(async (req) => {
              snippet: t.substring(0, 3000)
   }))
   .slice(0,10),
-      };
-    }
+
+    gridCandidates: [...html3.matchAll(/id="([^"]*?(?:grid|Grid|gv|GV|dx))/gi)]
+      .map(m => m[1])
+      .slice(0,20),
+
+    dxFragments: [...html3.matchAll(/.{0,300}(dxgv|dxGrid|dxrp|dxpc).{0,300}/gi)]
+      .map(m => m[0])
+      .slice(0,10),
+
+    tailHtml: html3.substring(html3.length - 6000)
+  }
+}
 
     const records = parseDeMinimisRecords(html3, maticna);
 
