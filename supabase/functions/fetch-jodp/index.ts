@@ -195,10 +195,20 @@ Deno.serve(async (req) => {
         hasTable: html3.includes("<table"),
         hasGrid: html3.includes("grid") || html3.includes("Grid"),
         tablesFound: (html3.match(/<table/gi) || []).length,
+
+        gridIds: [...html3.matchAll(/id="([^"]*(?:grid|Grid|gv|GV|dxgv)[^"]*)"/gi)]
+          .map(m => m[1])
+          .slice(0,20),
+
+         gridSnippets: [...html3.matchAll(/(<[^>]+id="[^"]*(?:grid|Grid|dxgv)[^"]*"[\s\S]{0,2000})/gi)]
+           .map(m => m[1])
+           .slice(0,5),
+
         tableSnippets: (html3.match(/<table[\s\S]*?<\/table>/gi) || [])
           .slice(0, 2)
           .map(t => t.substring(0, 2000)),
-        htmlSnippet: html3.substring(0, 3000),
+        
+          htmlSnippet: html3.substring(0, 3000),
       };
     }
 
