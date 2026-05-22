@@ -335,159 +335,47 @@ if (debug) {
   }
 });
 
-function browserHeaders() {
-  return {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-    Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-  };
-}
-
-async function safeJson(req: Request) {
-  try {
-    return await req.json();
-  } catch {
-    return {};
-  }
-}
-
-function absoluteUrl(path: string) {
-  if (!path) return `${JODP_URL}/Domov`;
-  if (path.startsWith("http")) return path;
-
-  const cleaned = path
-    .replace(/^\.\//, "")
-    .replace(/^\//, "");
-
-  return `${JODP_URL}/${cleaned}`;
-}
-
-function findFormAction(html: string): string | null {
-  const match = html.match(/<form[^>]*action="([^"]+)"/i);
-  return match ? match[1] : null;
-}
-
-function extractTokens(html: string): Record<string, string> {
-  const tokens: Record<string, string> = {};
-
-  for (const field of ["__VIEWSTATE", "__VIEWSTATEGENERATOR", "__EVENTVALIDATION"]) {
-    const match = html.match(new RegExp(`id="${field}"[^>]*value="([^"]*)"`, "i"));
-    if (match) tokens[field] = match[1];
-  }
-
-  return tokens;
-}
-
-function extractCookies(headers: Headers): string {
-  try {
-    const setCookies = headers.getSetCookie?.() || [];
-    return setCookies.map((c) => c.split(";")[0]).join("; ");
-  } catch {
-    const raw = headers.get("set-cookie") || "";
-    return raw
-      .split(",")
-      .map((c) => c.split(";")[0].trim())
-      .filter(Boolean)
-      .join("; ");
-  }
-}
-
-function mergeCookies(a: string, b: string): string {
-  if (!b) return a;
-  if (!a) return b;
-
-  const map: Record<string, string> = {};
-
-  for (const part of `${a}; ${b}`.split(";")) {
-    const eq = part.indexOf("=");
-    if (eq > 0) {
-      map[part.substring(0, eq).trim()] = part.substring(eq + 1).trim();
-    }
-  }
-
-  return Object.entries(map)
-    .map(([k, v]) => `${k}=${v}`)
-    .join("; ");
-}
-
-function findFieldName(html: string, hint: string): string | null {
-  const regex = new RegExp(`name="([^"]*${hint}[^"]*)"`, "i");
-  const match = html.match(regex);
-  return match ? match[1] : null;
-}
-
-function findButtonValue(html: string, name: string): string {
-  const escaped = name.replace(/\$/g, "\\$");
-  const regex = new RegExp(`name="${escaped}"[^>]*value="([^"]*)"`, "i");
-  const match = html.match(regex);
-  return match ? match[1] : "";
-}
-
-function findInputByType(html: string, type: string): string | null {
-  const regex = new RegExp(`<input[^>]*type="${type}"[^>]*name="([^"]+)"`, "i");
-  const match = html.match(regex);
-  return match ? match[1] : null;
-}
-
-function findSubmitButton(html: string): string | null {
-  const match = html.match(/<input[^>]*type="submit"[^>]*name="([^"]+)"/i);
-  return match ? match[1] : null;
-}
-
 function parseDeMinimisRecords(html: string, maticna: string): Record<string, any>[] {
   const records: Record<string, any>[] = [];
 
-  const tables = html.match(/<table[^>]*>([\s\S]*?)<\/table>/gi) || [];
-  if (tables.length === 0) return [];
+  const rows = [...html.matchAll(
+    /<tr[^>]*id="MainContent_pnlDTO_gvDTO_DXDataRow\d+"[^>]*>([\s\S]*?)<\/tr>/gi
+  )];
 
-  for (const tableHtml of tables) {
-    const rows = tableHtml.match(/<tr[^>]*>([\s\S]*?)<\/tr>/gi) || [];
-    if (rows.length < 2) continue;
+  for (const rowMatch of rows) {
+    const rowHtml = rowMatch[1];
 
-    let headers: string[] = [];
+    const cells = [...rowHtml.matchAll(/<td[^>]*class="[^"]*dxgv[^"]*"[^>]*>([\s\S]*?)<\/td>/gi)]
+      .map((m) => cleanHtmlText(m[1]))
+      .filter((v) => v && v !== "..." && v !== "X");
 
-    for (const row of rows) {
-      const cells = (row.match(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/gi) || [])
-        .map((cell) =>
-          cell
-            .replace(/<[^>]+>/g, "")
-            .replace(/&nbsp;/g, " ")
-            .replace(/&amp;/g, "&")
-            .trim()
-        );
+    if (cells.length < 6) continue;
 
-      if (cells.length < 3) continue;
+    const rowNumber = cells[0];
+    const dateAwarded = parseSlovenianDate(cells[1]);
+    const mssiNumber = cells[2];
+    const source = cells[3];
+    const legalBasis = cells[4];
+    const amount = parseAmount(cells[5]);
 
-      if (headers.length === 0) {
-        headers = cells.map((c) => c.toLowerCase());
-        continue;
-      }
+    const year = dateAwarded
+      ? Number(dateAwarded.substring(0, 4))
+      : new Date().getFullYear();
 
-      const rowData: Record<string, string> = {};
-      headers.forEach((h, i) => {
-        rowData[h] = cells[i] || "";
+    if (amount > 0) {
+      records.push({
+        year,
+        source,
+        amount,
+        legal_basis: legalBasis,
+        date_awarded: dateAwarded,
+        raw: {
+          maticna,
+          rowNumber,
+          mssiNumber,
+          cells,
+        },
       });
-
-      const year = parseInt(findValue(rowData, ["leto", "year", "obdobje"]) || "0", 10);
-      const amountText = findValue(rowData, ["znesek", "amount", "višina", "vrednost", "eur"]) || "0";
-      const amount = parseAmount(amountText);
-      const source = findValue(rowData, ["dajalec", "vir", "organ", "institucija"]) || "JODP";
-      const basis = findValue(rowData, ["pravna", "podlaga", "uredba"]) || null;
-
-      if (year >= 2000 && amount > 0) {
-        records.push({
-          year,
-          source,
-          amount,
-          legal_basis: basis,
-          date_awarded: null,
-          raw: {
-            maticna,
-            headers,
-            cells,
-            rowData,
-          },
-        });
-      }
     }
   }
 
@@ -502,6 +390,24 @@ function findValue(row: Record<string, string>, hints: string[]): string | null 
   }
 
   return null;
+}
+function cleanHtmlText(value: string): string {
+  return value
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function parseSlovenianDate(value: string): string | null {
+  const match = value.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if (!match) return null;
+
+  const [, d, m, y] = match;
+  return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
 }
 
 function parseAmount(value: string): number {
