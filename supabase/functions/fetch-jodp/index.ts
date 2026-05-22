@@ -229,7 +229,42 @@ Deno.serve(async (req) => {
       };
     }
 
-    const records = parseDeMinimisRecords(html3, maticna);
+    const tokens3 = extractTokens(html3);
+
+const form4: Record<string, string> = {
+  __VIEWSTATE: tokens3.__VIEWSTATE,
+  __EVENTVALIDATION: tokens3.__EVENTVALIDATION || "",
+  __EVENTTARGET: "ctl00$MainContent$ctl01",
+  __EVENTARGUMENT: "",
+};
+
+if (tokens3.__VIEWSTATEGENERATOR) {
+  form4.__VIEWSTATEGENERATOR = tokens3.__VIEWSTATEGENERATOR;
+}
+
+const step4 = await fetch(`${JODP_URL}/Domov`, {
+  method: "POST",
+  headers: {
+    ...browserHeaders(),
+    "Content-Type": "application/x-www-form-urlencoded",
+    Cookie: cookies3,
+  },
+  body: new URLSearchParams(form4).toString(),
+});
+
+const html4 = await step4.text();
+
+if (debug) {
+  debugInfo.step4 = {
+    status: step4.status,
+    htmlLength: html4.length,
+    hasTable: html4.includes("<table"),
+    tablesFound: (html4.match(/<table/gi) || []).length,
+    tailHtml: html4.substring(html4.length - 6000),
+  };
+}
+
+    const records = parseDeMinimisRecords(html4, maticna);
 
     const { data: company } = await supabase
       .from("companies")
