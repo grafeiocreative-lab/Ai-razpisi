@@ -221,6 +221,12 @@ Deno.serve(async (req) => {
       .slice(0,10),
 
     tailHtml: html3.substring(html3.length - 6000)
+
+    buttonTargets: [...html3.matchAll(
+      /WebForm_PostBackOptions\(&quot;([^&]+)&quot;/gi
+)]
+.map(m => m[1])
+.slice(0,20),
   }
 }
 
