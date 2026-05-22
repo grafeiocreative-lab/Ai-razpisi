@@ -317,6 +317,7 @@ if (debug) {
 
     const result: Record<string, unknown> = {
       ok: true,
+      version: "fetch-jodp-2026-05-22-browserHeaders-ok",
       maticna,
       company_id: company?.id || null,
       records_found: records.length,
