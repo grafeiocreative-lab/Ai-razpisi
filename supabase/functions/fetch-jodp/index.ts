@@ -194,6 +194,10 @@ Deno.serve(async (req) => {
         htmlLength: html3.length,
         hasTable: html3.includes("<table"),
         hasGrid: html3.includes("grid") || html3.includes("Grid"),
+        tablesFound: (html3.match(/<table/gi) || []).length,
+        tableSnippets: (html3.match(/<table[\s\S]*?<\/table>/gi) || [])
+          .slice(0, 2)
+          .map(t => t.substring(0, 2000)),
         htmlSnippet: html3.substring(0, 3000),
       };
     }
