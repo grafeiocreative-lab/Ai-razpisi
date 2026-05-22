@@ -236,6 +236,7 @@ const form4: Record<string, string> = {
   __EVENTVALIDATION: tokens3.__EVENTVALIDATION || "",
   __EVENTTARGET: "ctl00$MainContent$ctl01",
   __EVENTARGUMENT: "",
+  "ctl00$MainContent$txtMaticnaStevilka": maticna,
 };
 
 if (tokens3.__VIEWSTATEGENERATOR) {
