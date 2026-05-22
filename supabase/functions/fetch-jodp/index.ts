@@ -428,3 +428,10 @@ function json(payload: unknown, status = 200) {
     },
   });
 }
+async function safeJson(req: Request) {
+  try {
+    return await req.json();
+  } catch {
+    return {};
+  }
+}
