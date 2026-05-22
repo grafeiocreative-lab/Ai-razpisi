@@ -204,11 +204,13 @@ Deno.serve(async (req) => {
            .map(m => m[1])
            .slice(0,5),
 
-        tableSnippets: (html3.match(/<table[\s\S]*?<\/table>/gi) || [])
-          .slice(0, 2)
-          .map(t => t.substring(0, 2000)),
-        
-          htmlSnippet: html3.substring(0, 3000),
+         allTables: (html3.match(/<table[\s\S]*?<\/table>/gi) || [])
+           .map((t, i) => ({
+             index: i,
+             length: t.length,
+             snippet: t.substring(0, 3000)
+  }))
+  .slice(0,10),
       };
     }
 
