@@ -105,6 +105,7 @@ Deno.serve(async (req) => {
       findFieldName(html2, "maticna") ||
       findFieldName(html2, "txtMaticna") ||
       findFieldName(html2, "tbMaticna") ||
+      findInputByType(html2, "search") ||
       findInputByType(html2, "text");
 
     const btnName =
@@ -197,38 +198,36 @@ Deno.serve(async (req) => {
         tablesFound: (html3.match(/<table/gi) || []).length,
 
         gridIds: [...html3.matchAll(/id="([^"]*(?:grid|Grid|gv|GV|dxgv)[^"]*)"/gi)]
-          .map(m => m[1])
-          .slice(0,5),
+          .map((m) => m[1])
+          .slice(0, 5),
 
-         gridSnippets: [...html3.matchAll(/(<[^>]+id="[^"]*(?:grid|Grid|dxgv)[^"]*"[\s\S]{0,3000})/gi)]
-           .map(m => m[1])
-           .slice(0,5),
+        gridSnippets: [...html3.matchAll(/(<[^>]+id="[^"]*(?:grid|Grid|dxgv)[^"]*"[\s\S]{0,3000})/gi)]
+          .map((m) => m[1])
+          .slice(0, 5),
 
-         allTables: (html3.match(/<table[\s\S]*?<\/table>/gi) || [])
-           .map((t, i) => ({
-             index: i,
-             length: t.length,
-             snippet: t.substring(0, 3000)
-  }))
-  .slice(0,10),
+        allTables: (html3.match(/<table[\s\S]*?<\/table>/gi) || [])
+          .map((t, i) => ({
+            index: i,
+            length: t.length,
+            snippet: t.substring(0, 3000),
+          }))
+          .slice(0, 10),
 
-    gridCandidates: [...html3.matchAll(/id="([^"]*?(?:grid|Grid|gv|GV|dx))/gi)]
-      .map(m => m[1])
-      .slice(0,20),
+        gridCandidates: [...html3.matchAll(/id="([^"]*?(?:grid|Grid|gv|GV|dx))/gi)]
+          .map((m) => m[1])
+          .slice(0, 20),
 
-    dxFragments: [...html3.matchAll(/.{0,300}(dxgv|dxGrid|dxrp|dxpc).{0,300}/gi)]
-      .map(m => m[0])
-      .slice(0,10),
+        dxFragments: [...html3.matchAll(/.{0,300}(dxgv|dxGrid|dxrp|dxpc).{0,300}/gi)]
+          .map((m) => m[0])
+          .slice(0, 10),
 
-    tailHtml: html3.substring(html3.length - 6000)
+        tailHtml: html3.substring(html3.length - 6000),
 
-    buttonTargets: [...html3.matchAll(
-      /WebForm_PostBackOptions\(&quot;([^&]+)&quot;/gi
-)]
-.map(m => m[1])
-.slice(0,20),
-  }
-}
+        buttonTargets: [...html3.matchAll(/WebForm_PostBackOptions\(&quot;([^&]+)&quot;/gi)]
+          .map((m) => m[1])
+          .slice(0, 20),
+      };
+    }
 
     const records = parseDeMinimisRecords(html3, maticna);
 
