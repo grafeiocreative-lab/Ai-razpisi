@@ -444,3 +444,19 @@ function browserHeaders() {
   };
 }
 
+function extractCookies(headers: Headers): string {
+  try {
+    const setCookies = headers.getSetCookie?.() || [];
+    return setCookies
+      .map((c) => c.split(";")[0])
+      .join("; ");
+  } catch {
+    const raw = headers.get("set-cookie") || "";
+    return raw
+      .split(",")
+      .map((c) => c.split(";")[0].trim())
+      .filter(Boolean)
+      .join("; ");
+  }
+}
+
