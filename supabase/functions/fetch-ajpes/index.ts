@@ -42,7 +42,7 @@ Deno.serve(async (req) => {
       registration_number: prsRecord.registration_number,
       tax_number: prsRecord.tax_number,
       legal_form: prsRecord.legal_form,
-      address: prsRecord.address,
+      address: cleanAddress(prsRecord.address),
       municipality: prsRecord.municipality,
       region: prsRecord.region,
       main_activity_code: prsRecord.main_activity_code,
@@ -103,4 +103,13 @@ function json(payload: unknown, status = 200) {
       "Content-Type": "application/json"
     }
   });
+}
+
+function cleanAddress(value: string | null) {
+  if (!value) return null;
+  return value
+    .replace(/\s*"\s*/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/\s+,/g, ",")
+    .trim();
 }
