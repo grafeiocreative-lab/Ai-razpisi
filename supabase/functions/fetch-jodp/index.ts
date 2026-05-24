@@ -207,9 +207,9 @@ if (debug) {
 
     const { data: company } = await supabase
       .from("companies")
+      .upsert({ registration_number: maticna }, { onConflict: "registration_number" })
       .select("id")
-      .eq("registration_number", maticna)
-      .maybeSingle();
+      .single();
 
     let saved = 0;
     const errors: string[] = [];
@@ -218,15 +218,16 @@ if (debug) {
       for (const rec of records) {
         const { error } = await supabase
           .from("de_minimis_records")
-          .insert({
+          .upsert({
             company_id: company.id,
+            mssi_number: rec.raw.mssiNumber || null,
             provider: rec.source,
             programme: rec.legal_basis,
             amount: rec.amount,
             granted_date: rec.date_awarded || `${rec.year}-01-01`,
             source_url: `${JODP_URL}/Domov`,
             source_payload: rec.raw,
-          });
+          }, { onConflict: "company_id,mssi_number,granted_date,amount", ignoreDuplicates: true });
 
         if (error) {
           errors.push(error.message);
