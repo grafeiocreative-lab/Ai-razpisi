@@ -38,25 +38,16 @@ Deno.serve(async () => {
         }
 
         const html = await res.text();
-        const grants = parseGrants(html, page.status);
+        const grants = parseGrants(html, page.status, page.url);
 
         results.parsed += grants.length;
 
         for (const grant of grants) {
           try {
-
-        
-            grant.source_url = String(
-              grant.source_url ||
-              `evropskasredstva:auto:${slugify(
-                String(grant.title || "untitled")
-            )}`
-  );
-
-  if (!grant.title || !grant.source_url) {
-    results.skipped++;
-    continue;
-  }
+            if (!grant.title || !isHttpUrl(String(grant.source_url || ""))) {
+              results.skipped++;
+              continue;
+            }
 
             const existing = await findExistingGrant(supabase, grant);
 
@@ -133,7 +124,7 @@ async function findExistingGrant(
   return data;
 }
 
-function parseGrants(html: string, defaultStatus: string): Record<string, unknown>[] {
+function parseGrants(html: string, defaultStatus: string, sourcePageUrl: string): Record<string, unknown>[] {
   const grants: Record<string, unknown>[] = [];
 
   const text = html
@@ -172,6 +163,15 @@ function parseGrants(html: string, defaultStatus: string): Record<string, unknow
       extractField(block, "Opis upravičenih prijaviteljev") ||
       extractField(block, "Upravičeni prijavitelji");
 
+    const deadlineAt = parseDeadlineDate(
+      extractField(block, "Rok za prijavo na javni razpis") ||
+      extractField(block, "Veljavno")
+    );
+    const qualityFlags = [
+      sourceUrl ? null : "missing_source_url",
+      deadlineAt ? null : "missing_deadline",
+    ].filter(Boolean);
+
     const grant = {
       title,
       provider: extractField(block, "Razpisovalec"),
@@ -183,10 +183,7 @@ function parseGrants(html: string, defaultStatus: string): Record<string, unknow
         extractField(block, "Veljavno")
       ),
 
-      deadline_at: parseDeadlineDate(
-        extractField(block, "Rok za prijavo na javni razpis") ||
-        extractField(block, "Veljavno")
-      ),
+      deadline_at: deadlineAt,
 
       is_de_minimis: block.toLowerCase().includes("de minimis"),
       max_aid_amount: parseAmount(extractField(block, "Razpisana vrednost")),
@@ -205,7 +202,10 @@ function parseGrants(html: string, defaultStatus: string): Record<string, unknow
 
       raw_payload: {
         source: "evropskasredstva.si",
+        source_page_url: sourcePageUrl,
         scraped_at: new Date().toISOString(),
+        quality_flags: qualityFlags,
+        quality_status: qualityFlags.length ? "needs_review" : "verified",
         programme: extractField(block, "Program EU"),
         amount_eu: parseAmount(extractField(block, "Prispevek EU")),
         policy_goal:
@@ -362,19 +362,13 @@ function extractTags(block: string): string[] {
   return [...new Set(tags)];
 }
 
-function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/č/g, "c")
-    .replace(/š/g, "s")
-    .replace(/ž/g, "z")
-    .replace(/ć/g, "c")
-    .replace(/đ/g, "d")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .substring(0, 180);
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 function json(payload: unknown, status = 200) {
