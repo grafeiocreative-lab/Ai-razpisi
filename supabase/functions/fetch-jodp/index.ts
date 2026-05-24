@@ -4,88 +4,85 @@ const JODP_URL = "https://jodp.mf.gov.si";
 
 /* ─── helpers ─────────────────────────────────────── */
 
-function json(payload: unknown, status = 200) {
-  return new Response(JSON.stringify(payload, null, 2), {
+const json = (payload: unknown, status = 200) =>
+  new Response(JSON.stringify(payload, null, 2), {
     status,
     headers: { "Content-Type": "application/json" },
   });
-}
 
-async function safeJson(req: Request) {
+const safeJson = async (req: Request) => {
   try { return await req.json(); } catch { return {}; }
-}
+};
 
-function browserHeaders() {
-  return {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-    Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-  };
-}
+const browserHeaders = () => ({
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+});
 
-function extractCookies(headers: Headers): string {
+const extractCookies = (headers: Headers): string => {
   try {
-    const setCookies = headers.getSetCookie?.() || [];
-    return setCookies.map((c) => c.split(";")[0]).join("; ");
+    const setCookies = (headers as any).getSetCookie?.() || [];
+    return setCookies.map((c: string) => c.split(";")[0]).join("; ");
   } catch {
-    const raw = headers.get("set-cookie") || "";
-    return raw.split(",").map((c) => c.split(";")[0].trim()).filter(Boolean).join("; ");
+    return (headers.get("set-cookie") || "")
+      .split(",").map((c: string) => c.split(";")[0].trim()).filter(Boolean).join("; ");
   }
-}
+};
 
-function mergeCookies(a: string, b: string): string {
+const mergeCookies = (a: string, b: string): string => {
   if (!b) return a;
   if (!a) return b;
   const map: Record<string, string> = {};
-  for (const part of `${a}; ${b}`.split(";")) {
+  for (const part of (a + "; " + b).split(";")) {
     const eq = part.indexOf("=");
     if (eq > 0) map[part.substring(0, eq).trim()] = part.substring(eq + 1).trim();
   }
-  return Object.entries(map).map(([k, v]) => `${k}=${v}`).join("; ");
-}
+  return Object.entries(map).map(([k, v]) => k + "=" + v).join("; ");
+};
 
-function extractTokens(html: string): Record<string, string> {
+const extractTokens = (html: string): Record<string, string> => {
   const tokens: Record<string, string> = {};
   for (const field of ["__VIEWSTATE", "__VIEWSTATEGENERATOR", "__EVENTVALIDATION"]) {
-    const match = html.match(new RegExp(`id="${field}"[^>]*value="([^"]*)"`, "i"));
+    const match = html.match(new RegExp('id="' + field + '"[^>]*value="([^"]*)"', "i"));
     if (match) tokens[field] = match[1];
   }
   return tokens;
-}
+};
 
-function absoluteUrl(path: string): string {
-  if (!path) return `${JODP_URL}/Domov`;
+const absoluteUrl = (path: string): string => {
+  if (!path) return JODP_URL + "/Domov";
   if (path.startsWith("http")) return path;
-  return `${JODP_URL}/${path.replace(/^\.\//, "").replace(/^\//, "")}`;
-}
+  return JODP_URL + "/" + path.replace(/^\.\//, "").replace(/^\//, "");
+};
 
-function findFieldName(html: string, hint: string): string | null {
-  const match = html.match(new RegExp(`name="([^"]*${hint}[^"]*)"`, "i"));
+const findFieldName = (html: string, hint: string): string | null => {
+  const match = html.match(new RegExp('name="([^"]*' + hint + '[^"]*)"', "i"));
   return match ? match[1] : null;
-}
+};
 
-function findButtonValue(html: string, name: string): string {
+const findButtonValue = (html: string, name: string): string => {
   const escaped = name.replace(/\$/g, "\\$");
-  const match = html.match(new RegExp(`name="${escaped}"[^>]*value="([^"]*)"`, "i"));
+  const match = html.match(new RegExp('name="' + escaped + '"[^>]*value="([^"]*)"', "i"));
   return match ? match[1] : "";
-}
+};
 
-function findInputByType(html: string, type: string): string | null {
-  const match = html.match(new RegExp(`<input[^>]*type="${type}"[^>]*name="([^"]+)"`, "i"));
+const findInputByType = (html: string, type: string): string | null => {
+  const match = html.match(new RegExp('<input[^>]*type="' + type + '"[^>]*name="([^"]+)"', "i"));
   return match ? match[1] : null;
-}
+};
 
-function findSubmitButton(html: string): string | null {
+const findSubmitButton = (html: string): string | null => {
   const match = html.match(/<input[^>]*type="submit"[^>]*name="([^"]+)"/i);
   return match ? match[1] : null;
-}
+};
 
-function findFormAction(html: string): string | null {
+const findFormAction = (html: string): string | null => {
   const match = html.match(/<form[^>]*action="([^"]+)"/i);
   return match ? match[1] : null;
-}
+};
 
-function cleanHtmlText(value: string): string {
-  return value
+const cleanHtmlText = (value: string): string =>
+  value
     .replace(/<script[\s\S]*?<\/script>/gi, "")
     .replace(/<[^>]+>/g, "")
     .replace(/&nbsp;/g, " ")
@@ -93,22 +90,22 @@ function cleanHtmlText(value: string): string {
     .replace(/&#39;/g, "'")
     .replace(/\s+/g, " ")
     .trim();
-}
 
-function parseSlovenianDate(value: string): string | null {
+const parseSlovenianDate = (value: string): string | null => {
   const match = value.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
   if (!match) return null;
   const [, d, m, y] = match;
-  return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
-}
+  return y + "-" + m.padStart(2, "0") + "-" + d.padStart(2, "0");
+};
 
-function parseAmount(value: string): number {
-  const cleaned = value.replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", ".");
-  const number = parseFloat(cleaned);
+const parseAmount = (value: string): number => {
+  const number = parseFloat(
+    value.replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", ".")
+  );
   return Number.isFinite(number) ? number : 0;
-}
+};
 
-function parseDeMinimisRecords(html: string, maticna: string): Record<string, unknown>[] {
+const parseDeMinimisRecords = (html: string, maticna: string): Record<string, unknown>[] => {
   const records: Record<string, unknown>[] = [];
   const rows = [...html.matchAll(
     /<tr[^>]*id="MainContent_pnlDTO_gvDTO_DXDataRow\d+"[^>]*>([\s\S]*?)<\/tr>/gi
@@ -123,47 +120,36 @@ function parseDeMinimisRecords(html: string, maticna: string): Record<string, un
     const year = dateAwarded ? Number(dateAwarded.substring(0, 4)) : new Date().getFullYear();
     if (amount > 0) {
       records.push({
-        year,
-        source: cells[3],
-        amount,
-        legal_basis: cells[4],
-        date_awarded: dateAwarded,
+        year, source: cells[3], amount,
+        legal_basis: cells[4], date_awarded: dateAwarded,
         raw: { maticna, rowNumber: cells[0], mssiNumber: cells[2], cells },
       });
     }
   }
   return records;
-}
+};
 
 /* ─── main handler ─────────────────────────────────── */
 
 Deno.serve(async (req) => {
   try {
-    if (req.method !== "POST") {
-      return json({ ok: false, error: "POST only" }, 405);
-    }
+    if (req.method !== "POST") return json({ ok: false, error: "POST only" }, 405);
 
     const body = await safeJson(req);
     const maticna = String(body.registration_number || body.maticna || "").trim();
     const debug = Boolean(body.debug);
 
-    if (!maticna) {
-      return json({ ok: false, error: "Manjka registration_number" }, 400);
-    }
+    if (!maticna) return json({ ok: false, error: "Manjka registration_number" }, 400);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-
-    if (!supabaseUrl || !serviceRoleKey) {
-      return json({ ok: false, error: "Missing Supabase env vars" }, 500);
-    }
+    if (!supabaseUrl || !serviceRoleKey) return json({ ok: false, error: "Missing Supabase env vars" }, 500);
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
     const debugInfo: Record<string, unknown> = {};
 
-    // Step 1: pridobi začetno stran
-    const step1 = await fetch(`${JODP_URL}/Domov`, { headers: browserHeaders() });
-    if (!step1.ok) return json({ ok: false, error: `JODP step1 HTTP ${step1.status}` }, 500);
+    const step1 = await fetch(JODP_URL + "/Domov", { headers: browserHeaders() });
+    if (!step1.ok) return json({ ok: false, error: "JODP step1 HTTP " + step1.status }, 500);
 
     const html1 = await step1.text();
     const cookies1 = extractCookies(step1.headers);
@@ -175,10 +161,8 @@ Deno.serve(async (req) => {
 
     const but1Name = findFieldName(html1, "but1") || "ctl00$MainContent$but1";
     const but1Value = findButtonValue(html1, but1Name) || "";
-
     if (debug) debugInfo.step1 = { tokens: Object.keys(tokens1), but1Name, but1Value };
 
-    // Step 2: POST na domov, pridobi iskalno formo
     const form2: Record<string, string> = {
       __VIEWSTATE: tokens1.__VIEWSTATE,
       __EVENTVALIDATION: tokens1.__EVENTVALIDATION || "",
@@ -186,7 +170,7 @@ Deno.serve(async (req) => {
     };
     if (tokens1.__VIEWSTATEGENERATOR) form2.__VIEWSTATEGENERATOR = tokens1.__VIEWSTATEGENERATOR;
 
-    const step2 = await fetch(`${JODP_URL}/Domov`, {
+    const step2 = await fetch(JODP_URL + "/Domov", {
       method: "POST",
       headers: { ...browserHeaders(), "Content-Type": "application/x-www-form-urlencoded", Cookie: cookies1 },
       body: new URLSearchParams(form2).toString(),
@@ -222,7 +206,6 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: "Ni VIEWSTATE ali input polja v koraku 2", inputName, btnName, debug: debugInfo }, 500);
     }
 
-    // Step 3: iskanje po matični
     const form3: Record<string, string> = {
       __VIEWSTATE: tokens2.__VIEWSTATE,
       __EVENTVALIDATION: tokens2.__EVENTVALIDATION || "",
@@ -253,7 +236,6 @@ Deno.serve(async (req) => {
 
     if (debug) debugInfo.step3 = { status: step3.status };
 
-    // Step 4: klik na de minimis tab
     const tokens3 = extractTokens(html3);
     const form4: Record<string, string> = {
       __VIEWSTATE: tokens3.__VIEWSTATE,
@@ -264,7 +246,7 @@ Deno.serve(async (req) => {
     };
     if (tokens3.__VIEWSTATEGENERATOR) form4.__VIEWSTATEGENERATOR = tokens3.__VIEWSTATEGENERATOR;
 
-    const step4 = await fetch(`${JODP_URL}/Domov`, {
+    const step4 = await fetch(JODP_URL + "/Domov", {
       method: "POST",
       headers: { ...browserHeaders(), "Content-Type": "application/x-www-form-urlencoded", Cookie: cookies3 },
       body: new URLSearchParams(form4).toString(),
@@ -273,7 +255,6 @@ Deno.serve(async (req) => {
     const html4 = await step4.text();
     if (debug) debugInfo.step4 = { status: step4.status };
 
-    // Parsiranje in shranjevanje
     const records = parseDeMinimisRecords(html4, maticna);
 
     const { data: company } = await supabase
@@ -296,8 +277,8 @@ Deno.serve(async (req) => {
             provider: rec.source,
             programme: rec.legal_basis,
             amount: rec.amount,
-            granted_date: rec.date_awarded || `${rec.year}-01-01`,
-            source_url: `${JODP_URL}/Domov`,
+            granted_date: rec.date_awarded || (rec.year + "-01-01"),
+            source_url: JODP_URL + "/Domov",
             source_payload: raw,
           }, { onConflict: "company_id,mssi_number,granted_date,amount", ignoreDuplicates: true });
         if (error) errors.push(error.message); else saved++;
@@ -313,7 +294,7 @@ Deno.serve(async (req) => {
 
     const result: Record<string, unknown> = {
       ok: true,
-      version: "fetch-jodp-2026-05-24-helpers-top",
+      version: "fetch-jodp-2026-05-24-const-arrows",
       maticna,
       company_id: company?.id || null,
       records_found: records.length,
