@@ -9,7 +9,9 @@ import {
   Minus,CircleCheck,CircleX,ChevronUp,
 } from "lucide-react";
 import{createClient}from"@supabase/supabase-js";
-const sb=createClient(import.meta.env.VITE_SUPABASE_URL,import.meta.env.VITE_SUPABASE_ANON_KEY);
+const sb=import.meta.env.VITE_SUPABASE_URL
+  ?createClient(import.meta.env.VITE_SUPABASE_URL,import.meta.env.VITE_SUPABASE_ANON_KEY)
+  :null;
 
 /* ═══ TOKENS ═══════════════════════════════════════ */
 const c={graphite:"#071014",ivory:"#F7F4EC",cream:"#EFEADF",olive:"#7F9656",oliveLight:"rgba(127,150,86,0.08)",oliveMed:"rgba(127,150,86,0.15)",amber:"#D9A441",amberLight:"rgba(217,164,65,0.12)",border:"#DDD7C8",t1:"#101418",t2:"#62645F",t3:"#8A8A82",white:"#FFFFFF",signal:"#5B7CFA",signalLight:"rgba(91,124,250,0.12)",coral:"#C85A3A"};
@@ -504,6 +506,7 @@ function Dashboard({maticna}){
 /*  APP ROUTER                                        */
 /* ═══════════════════════════════════════════════════ */
 export default function App(){
+  if(!sb)return(<div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui",color:"#333"}}><div style={{textAlign:"center"}}><h2>Manjkajo okoljske spremenljivke</h2><p style={{color:"#666"}}>VITE_SUPABASE_URL in VITE_SUPABASE_ANON_KEY nista nastavljeni.</p></div></div>);
   const [mode,setMode]=useState("landing");
   const [maticna,setMaticna]=useState("1234567000");
   const go=p=>{setMode(p);window.scrollTo?.(0,0);};
