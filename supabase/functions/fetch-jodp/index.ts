@@ -50,12 +50,7 @@ Deno.serve(async (req) => {
     const but1Value = findButtonValue(html1, but1Name) || "";
 
     if (debug) {
-      debugInfo.step1 = {
-        tokens: Object.keys(tokens1),
-        but1Name,
-        but1Value,
-        cookies: cookies1.substring(0, 120),
-      };
+      debugInfo.step1 = { tokens: Object.keys(tokens1), but1Name, but1Value };
     }
 
     const form2: Record<string, string> = {
@@ -118,21 +113,7 @@ Deno.serve(async (req) => {
     const postUrl = absoluteUrl(formAction);
 
     if (debug) {
-      const allInputs = [...html2.matchAll(/<input[^>]*name="([^"]+)"[^>]*>/gi)].map((m) => m[1]);
-      const allButtons = [...html2.matchAll(/<input[^>]*type="submit"[^>]*name="([^"]+)"/gi)].map((m) => m[1]);
-
-      debugInfo.step2 = {
-        status: step2.status,
-        finalUrl: step2FinalUrl,
-        formAction,
-        postUrl,
-        tokens: Object.keys(tokens2),
-        inputName,
-        btnName,
-        allInputs: allInputs.slice(0, 30),
-        allButtons,
-        htmlSnippet: html2.substring(0, 2500),
-      };
+      debugInfo.step2 = { status: step2.status };
     }
 
     if (!tokens2.__VIEWSTATE || !inputName) {
@@ -189,44 +170,7 @@ Deno.serve(async (req) => {
     }
 
     if (debug) {
-      debugInfo.step3 = {
-        status: step3.status,
-        postUrl,
-        htmlLength: html3.length,
-        hasTable: html3.includes("<table"),
-        hasGrid: html3.includes("grid") || html3.includes("Grid"),
-        tablesFound: (html3.match(/<table/gi) || []).length,
-
-        gridIds: [...html3.matchAll(/id="([^"]*(?:grid|Grid|gv|GV|dxgv)[^"]*)"/gi)]
-          .map((m) => m[1])
-          .slice(0, 5),
-
-        gridSnippets: [...html3.matchAll(/(<[^>]+id="[^"]*(?:grid|Grid|dxgv)[^"]*"[\s\S]{0,3000})/gi)]
-          .map((m) => m[1])
-          .slice(0, 5),
-
-        allTables: (html3.match(/<table[\s\S]*?<\/table>/gi) || [])
-          .map((t, i) => ({
-            index: i,
-            length: t.length,
-            snippet: t.substring(0, 3000),
-          }))
-          .slice(0, 10),
-
-        gridCandidates: [...html3.matchAll(/id="([^"]*?(?:grid|Grid|gv|GV|dx))/gi)]
-          .map((m) => m[1])
-          .slice(0, 20),
-
-        dxFragments: [...html3.matchAll(/.{0,300}(dxgv|dxGrid|dxrp|dxpc).{0,300}/gi)]
-          .map((m) => m[0])
-          .slice(0, 10),
-
-        tailHtml: html3.substring(html3.length - 6000),
-
-        buttonTargets: [...html3.matchAll(/WebForm_PostBackOptions\(&quot;([^&]+)&quot;/gi)]
-          .map((m) => m[1])
-          .slice(0, 20),
-      };
+      debugInfo.step3 = { status: step3.status };
     }
 
     const tokens3 = extractTokens(html3);
@@ -256,23 +200,7 @@ const step4 = await fetch(`${JODP_URL}/Domov`, {
 const html4 = await step4.text();
 
 if (debug) {
-  debugInfo.step4 = {
-    status: step4.status,
-    htmlLength: html4.length,
-    hasTable: html4.includes("<table"),
-    tablesFound: (html4.match(/<table/gi) || []).length,
-
-    dtoRows: [...html4.matchAll(
-      /<tr[^>]*id="MainContent_pnlDTO_gvDTO_DXDataRow\d+"[\s\S]*?<\/tr>/gi
-    )]
-      .map((m, i) => ({
-        index: i,
-        snippet: m[0].substring(0, 2000)
-      }))
-      .slice(0,5),
-
-    tailHtml: html4.substring(html4.length - 6000),
-  };
+  debugInfo.step4 = { status: step4.status };
 }
 
     const records = parseDeMinimisRecords(html4, maticna);
@@ -477,4 +405,63 @@ function extractTokens(html: string): Record<string, string> {
   }
 
   return tokens;
-};
+}
+
+function absoluteUrl(path: string) {
+  if (!path) return `${JODP_URL}/Domov`;
+  if (path.startsWith("http")) return path;
+
+  const cleaned = path
+    .replace(/^\.\//, "")
+    .replace(/^\//, "");
+
+  return `${JODP_URL}/${cleaned}`;
+}
+
+function findFormAction(html: string): string | null {
+  const match = html.match(/<form[^>]*action="([^"]+)"/i);
+  return match ? match[1] : null;
+}
+
+function findButtonValue(html: string, name: string): string {
+  const escaped = name.replace(/\$/g, "\\$");
+  const regex = new RegExp(`name="${escaped}"[^>]*value="([^"]*)"`, "i");
+  const match = html.match(regex);
+  return match ? match[1] : "";
+}
+
+function findInputByType(html: string, type: string): string | null {
+  const regex = new RegExp(`<input[^>]*type="${type}"[^>]*name="([^"]+)"`, "i");
+  const match = html.match(regex);
+  return match ? match[1] : null;
+}
+
+function findSubmitButton(html: string): string | null {
+  const match = html.match(/<input[^>]*type="submit"[^>]*name="([^"]+)"/i);
+  return match ? match[1] : null;
+}
+
+function findFieldName(html: string, hint: string): string | null {
+  const regex = new RegExp(`name="([^"]*${hint}[^"]*)"`, "i");
+  const match = html.match(regex);
+  return match ? match[1] : null;
+}
+
+function mergeCookies(a: string, b: string): string {
+  if (!b) return a;
+  if (!a) return b;
+
+  const map: Record<string, string> = {};
+
+  for (const part of `${a}; ${b}`.split(";")) {
+    const eq = part.indexOf("=");
+    if (eq > 0) {
+      map[part.substring(0, eq).trim()] = part.substring(eq + 1).trim();
+    }
+  }
+
+  return Object.entries(map)
+    .map(([k, v]) => `${k}=${v}`)
+    .join("; ");
+}
+
