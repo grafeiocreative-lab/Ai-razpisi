@@ -549,7 +549,7 @@ function SignalBars({score}){
 
 function Dashboard({maticna}){
   const [grantItems,setGrantItems]=useState(fallbackGrants);const [sel,setSel]=useState(fallbackGrants[0]);const [af,setAf]=useState("Vse");const [showD,setShowD]=useState(true);const [lt,setLt]=useState(true);const [navSel,setNavSel]=useState("Pregled");const[company,setCompany]=useState(null);
-  useEffect(()=>{let active=true;(async()=>{const{data}=await sb.from("grants").select("*").in("status",["open","upcoming"]).limit(40);if(!active)return;const mapped=(data||[]).map(mapGrant);if(mapped.length){mapped[0].topMatch=true;setGrantItems(mapped);setSel(mapped[0]);}})();return()=>{active=false;};},[]);
+  useEffect(()=>{let active=true;(async()=>{const today=new Date().toISOString();const{data}=await sb.from("grants").select("*").in("status",["open","upcoming"]).or(`deadline_at.is.null,deadline_at.gte.${today}`).limit(40);if(!active)return;const mapped=(data||[]).map(mapGrant);if(mapped.length){mapped[0].topMatch=true;setGrantItems(mapped);setSel(mapped[0]);}})();return()=>{active=false;};},[]);
   useEffect(()=>{if(!maticna)return;let active=true;(async()=>{const{data}=await sb.from("companies").select("company_name").eq("registration_number",maticna).maybeSingle();if(active)setCompany(data||null);})();return()=>{active=false;};},[maticna]);
   const nav=[{icon:LayoutGrid,label:"Pregled"},{icon:FileText,label:"Razpisi"},{icon:Sparkles,label:"Priložnosti zame",badge:7},{icon:User,label:"Moj profil"},{icon:Bell,label:"Opozorila"},{icon:Calendar,label:"Koledar rokov"},{icon:Bot,label:"AI pomočnik"}];
   return(<div style={{display:"flex",height:"100vh",width:"100%",fontFamily:f,background:c.ivory,color:c.t1,overflow:"hidden"}}>

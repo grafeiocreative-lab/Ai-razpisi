@@ -218,7 +218,15 @@ function parseGrants(html: string, defaultStatus: string): Record<string, unknow
       last_checked_at: new Date().toISOString()
     };
 
-    if (grant.title && (grant.provider || grant.max_aid_amount || grant.source_url)) {
+    if (grant.deadline_at && new Date(String(grant.deadline_at)).getTime() < Date.now()) {
+      grant.status = "closed";
+    }
+
+    if (
+      grant.title &&
+      !/^(Aktualen|Napovedan|Zaključen)\s*-\s*Evropska sredstva$/i.test(grant.title) &&
+      (grant.provider || grant.max_aid_amount || grant.source_url)
+    ) {
       grants.push(grant);
     }
   }
