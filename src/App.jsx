@@ -9,10 +9,7 @@ import {
   Minus,CircleCheck,CircleX,ChevronUp,
 } from "lucide-react";
 import{createClient}from"@supabase/supabase-js";
-const SUPA_URL=import.meta.env.VITE_SUPABASE_URL;
-const SUPA_KEY=import.meta.env.VITE_SUPABASE_ANON_KEY;
-if(!SUPA_URL||!SUPA_KEY)throw new Error("Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY — set them in Netlify environment variables.");
-const sb=createClient(SUPA_URL,SUPA_KEY);
+const sb=createClient(import.meta.env.VITE_SUPABASE_URL,import.meta.env.VITE_SUPABASE_ANON_KEY);
 
 /* ═══ TOKENS ═══════════════════════════════════════ */
 const c={graphite:"#071014",ivory:"#F7F4EC",cream:"#EFEADF",olive:"#7F9656",oliveLight:"rgba(127,150,86,0.08)",oliveMed:"rgba(127,150,86,0.15)",amber:"#D9A441",amberLight:"rgba(217,164,65,0.12)",border:"#DDD7C8",t1:"#101418",t2:"#62645F",t3:"#8A8A82",white:"#FFFFFF",signal:"#5B7CFA",signalLight:"rgba(91,124,250,0.12)",coral:"#C85A3A"};
