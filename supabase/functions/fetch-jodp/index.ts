@@ -459,4 +459,24 @@ function extractCookies(headers: Headers): string {
       .join("; ");
   }
 }
+function extractTokens(html: string): Record<string, string> {
+  const tokens: Record<string, string> = {};
+
+  for (const field of [
+    "__VIEWSTATE",
+    "__VIEWSTATEGENERATOR",
+    "__EVENTVALIDATION",
+  ]) {
+    const match = html.match(
+      new RegExp(`id="${field}"[^>]*value="([^"]*)"`, "i")
+    );
+
+    if (match) {
+      tokens[field] = match[1];
+    }
+  }
+
+  return tokens;
+}
+
 
