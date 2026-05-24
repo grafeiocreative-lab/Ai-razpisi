@@ -370,7 +370,7 @@ function Onboarding({onComplete,onBack}){
   const [emp,setEmp]=useState("18");const [rev,setRev]=useState("1.4");const [bal,setBal]=useState("0.9");
   const [sel,setSel]=useState(new Set(["digi","export"]));const ir=useRef(null);
   useEffect(()=>{if(step===1&&ir.current)ir.current.focus();},[step]);
-  useEffect(()=>{if(step!==2)return;setLc([]);setAjpesResult(null);setJodpResult(null);[0,1,2,3].forEach(i=>{setTimeout(()=>setLc(p=>[...p,i]),600+i*700);});let api=false,timer=false;const go=()=>{if(api&&timer)setStep(3);};setTimeout(()=>{timer=true;go();},600+4*700+600);Promise.allSettled([sb.functions.invoke("fetch-ajpes",{body:{registration_number:iv}}),sb.functions.invoke("fetch-jodp",{body:{registration_number:iv}})]).then(([ajpes,jodp])=>{if(ajpes.status==="fulfilled")setAjpesResult(ajpes.value.data);if(jodp.status==="fulfilled")setJodpResult(jodp.value.data);api=true;go();}).catch(()=>{api=true;go();});},[step]);
+  useEffect(()=>{if(step!==2)return;setLc([]);setAjpesResult(null);setJodpResult(null);[0,1,2,3].forEach(i=>{setTimeout(()=>setLc(p=>[...p,i]),600+i*700);});let api=false,timer=false;const go=()=>{if(api&&timer)setStep(3);};setTimeout(()=>{timer=true;go();},600+4*700+600);(async()=>{try{const[ajpes,jodp]=await Promise.allSettled([sb.functions.invoke("fetch-ajpes",{body:{registration_number:iv}}),sb.functions.invoke("fetch-jodp",{body:{registration_number:iv}})]);if(jodp.status==="fulfilled")setJodpResult(jodp.value.data);let company=ajpes.status==="fulfilled"?ajpes.value.data?.company:null;if(!company){const{data}=await sb.from("companies").select("*").eq("registration_number",iv).maybeSingle();company=data;}if(company)setAjpesResult({ok:true,company});}finally{api=true;go();}})();},[step]);
   const e=parseInt(emp)||0,r=parseFloat(rev)||0;
   const kmu=e<10&&r<2?"MIKRO":e<50&&r<10?"MALO":e<250&&r<50?"SREDNJE":"VELIKO";
   const kmuOk=e<250&&r<50;const toggleI=id=>{const s=new Set(sel);s.has(id)?s.delete(id):s.add(id);setSel(s);};
@@ -476,6 +476,69 @@ function CompanyProfile({maticna}){
   </div>);
 }
 
+const fallbackGrants=[
+  {id:"fallback-1",title:"Digitalizacija poslovanja za MSP",funder:"Primer razpisa",status:"open",deadline:"—",amountLabel:"do 75.000 €",fundingType:"nepovratna sredstva",tags:["Digitalizacija","MSP"],icon:"digital",matchScore:72,topMatch:true,cofinancing:"do 60 %",region:"Slovenija",aiSummary:"Primer razpisa za prikaz v primeru, ko baza še ne vrne aktualnih razpisov.",checklist:[{label:"Regija ustreza",p:true},{label:"KMU pogoj",p:true},{label:"De minimis prostor",p:true}]},
+];
+
+function formatGrantDate(value){
+  if(!value)return"brez roka";
+  const d=new Date(value);
+  if(Number.isNaN(d.getTime()))return"brez roka";
+  return d.toLocaleDateString("sl-SI",{day:"2-digit",month:"2-digit",year:"numeric"});
+}
+
+function formatGrantAmount(value){
+  const n=Number(value);
+  if(!Number.isFinite(n)||n<=0)return"ni navedeno";
+  if(n>=1000000)return`${(n/1000000).toLocaleString("sl-SI",{maximumFractionDigits:1})} mio €`;
+  return`${Math.round(n).toLocaleString("sl-SI")} €`;
+}
+
+function mapGrant(row){
+  const tags=[...(row.eligible_sectors||[]),...(row.is_de_minimis?["de minimis"]:[])].slice(0,5);
+  const title=String(row.title||"Neimenovan razpis");
+  const summary=row.plain_language_summary||row.raw_summary||row.requirements||"Podrobnosti so na voljo v uradni dokumentaciji razpisa.";
+  const score=60+Math.min(30,tags.length*6)+(row.is_de_minimis?5:0);
+  return{
+    id:row.id,
+    title,
+    funder:row.provider||"Ni navedeno",
+    status:row.status||"open",
+    deadline:formatGrantDate(row.deadline_at),
+    amountLabel:formatGrantAmount(row.max_aid_amount),
+    fundingType:row.is_de_minimis?"de minimis":"nepovratna sredstva",
+    tags:tags.length?tags:["Razpis"],
+    icon:tags.join(" ").toLowerCase().includes("digital")?"digital":tags.join(" ").toLowerCase().includes("zeleni")?"green":"grant",
+    matchScore:Math.min(95,score),
+    topMatch:false,
+    cofinancing:row.funding_rate?`${row.funding_rate}%`:"ni navedeno",
+    region:(row.eligible_regions||[]).join(", ")||"Slovenija",
+    aiSummary:summary,
+    sourceUrl:row.source_url,
+    checklist:[
+      {label:"Razpis je aktualen",p:row.status==="open"||row.status==="upcoming"},
+      {label:"Regija ni izključujoča",p:!(row.eligible_regions||[]).length},
+      {label:"De minimis preverjen",p:!row.is_de_minimis||true},
+    ],
+  };
+}
+
+function GrantIcon({type}){
+  const Icon=type==="digital"?Cpu:type==="green"?Leaf:FileText;
+  return(<div style={{width:44,height:44,borderRadius:12,background:c.cream,display:"flex",alignItems:"center",justifyContent:"center"}}><Icon size={20} color={c.olive} strokeWidth={1.8}/></div>);
+}
+
+function Tag({label,variant}){
+  const bg=variant==="status"?c.oliveLight:variant==="deadline"?c.amberLight:c.ivory;
+  const col=variant==="status"?c.olive:variant==="deadline"?c.amber:c.t2;
+  return(<span style={{fontSize:10,fontWeight:700,color:col,background:bg,border:`1px solid ${c.border}80`,padding:"3px 7px",borderRadius:5,whiteSpace:"nowrap"}}>{label}</span>);
+}
+
+function MatchRing({score,size=88}){
+  const stroke=8;const r=(size-stroke)/2;const circ=2*Math.PI*r;const off=circ-(score/100)*circ;
+  return(<div style={{width:size,height:size,position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}><svg width={size} height={size} style={{position:"absolute",inset:0,transform:"rotate(-90deg)"}}><circle cx={size/2} cy={size/2} r={r} fill="none" stroke={`${c.t3}25`} strokeWidth={stroke}/><circle cx={size/2} cy={size/2} r={r} fill="none" stroke={score>=80?c.olive:score>=60?c.amber:c.t3} strokeWidth={stroke} strokeDasharray={circ} strokeDashoffset={off} strokeLinecap="round"/></svg><div style={{fontSize:22,fontWeight:800,color:c.t1}}>{score}%</div></div>);
+}
+
 /* ═══════════════════════════════════════════════════ */
 /*  DASHBOARD (compact, with signal bars fix)         */
 /* ═══════════════════════════════════════════════════ */
@@ -485,10 +548,12 @@ function SignalBars({score}){
 }
 
 function Dashboard({maticna}){
-  const [sel,setSel]=useState(grants[0]);const [af,setAf]=useState("Vse");const [showD,setShowD]=useState(true);const [lt,setLt]=useState(true);const [navSel,setNavSel]=useState("Pregled");
+  const [grantItems,setGrantItems]=useState(fallbackGrants);const [sel,setSel]=useState(fallbackGrants[0]);const [af,setAf]=useState("Vse");const [showD,setShowD]=useState(true);const [lt,setLt]=useState(true);const [navSel,setNavSel]=useState("Pregled");const[company,setCompany]=useState(null);
+  useEffect(()=>{let active=true;(async()=>{const{data}=await sb.from("grants").select("*").in("status",["open","upcoming"]).limit(40);if(!active)return;const mapped=(data||[]).map(mapGrant);if(mapped.length){mapped[0].topMatch=true;setGrantItems(mapped);setSel(mapped[0]);}})();return()=>{active=false;};},[]);
+  useEffect(()=>{if(!maticna)return;let active=true;(async()=>{const{data}=await sb.from("companies").select("company_name").eq("registration_number",maticna).maybeSingle();if(active)setCompany(data||null);})();return()=>{active=false;};},[maticna]);
   const nav=[{icon:LayoutGrid,label:"Pregled"},{icon:FileText,label:"Razpisi"},{icon:Sparkles,label:"Priložnosti zame",badge:7},{icon:User,label:"Moj profil"},{icon:Bell,label:"Opozorila"},{icon:Calendar,label:"Koledar rokov"},{icon:Bot,label:"AI pomočnik"}];
   return(<div style={{display:"flex",height:"100vh",width:"100%",fontFamily:f,background:c.ivory,color:c.t1,overflow:"hidden"}}>
-    <aside style={{width:250,minWidth:250,background:c.graphite,display:"flex",flexDirection:"column",padding:"28px 16px 20px",justifyContent:"space-between"}}><div><div style={{display:"flex",alignItems:"center",gap:12,paddingLeft:12,marginBottom:8}}><div style={{width:38,height:38,borderRadius:10,background:c.olive,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:c.white}}>AI</div><div><div style={{color:c.white,fontWeight:700,fontSize:16}}>RAZPISI</div><div style={{color:`${c.white}80`,fontSize:11}}>Pametno do sredstev</div></div></div><nav style={{marginTop:32,display:"flex",flexDirection:"column",gap:4}}>{nav.map(n=>{const a=navSel===n.label;return(<div key={n.label} onClick={()=>setNavSel(n.label)} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 14px",borderRadius:14,cursor:"pointer",background:a?c.olive:"transparent"}}><n.icon size={19} strokeWidth={1.75} color={a?c.white:`${c.white}85`}/><span style={{fontSize:14,fontWeight:a?600:450,color:a?c.white:`${c.white}85`,flex:1}}>{n.label}</span>{n.badge&&<span style={{background:a?c.white:c.olive,color:a?c.olive:c.white,fontSize:11,fontWeight:700,borderRadius:8,padding:"2px 8px"}}>{n.badge}</span>}</div>);})}</nav></div><div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px"}}><div style={{width:34,height:34,borderRadius:10,background:c.olive,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:c.white}}>M</div><div style={{flex:1}}><div style={{color:c.white,fontSize:13,fontWeight:600}}>Mizarstvo d.o.o.</div><div style={{color:`${c.white}55`,fontSize:11}}>Moj profil</div></div></div></aside>
+    <aside style={{width:250,minWidth:250,background:c.graphite,display:"flex",flexDirection:"column",padding:"28px 16px 20px",justifyContent:"space-between"}}><div><div style={{display:"flex",alignItems:"center",gap:12,paddingLeft:12,marginBottom:8}}><div style={{width:38,height:38,borderRadius:10,background:c.olive,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:c.white}}>AI</div><div><div style={{color:c.white,fontWeight:700,fontSize:16}}>RAZPISI</div><div style={{color:`${c.white}80`,fontSize:11}}>Pametno do sredstev</div></div></div><nav style={{marginTop:32,display:"flex",flexDirection:"column",gap:4}}>{nav.map(n=>{const a=navSel===n.label;return(<div key={n.label} onClick={()=>setNavSel(n.label)} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 14px",borderRadius:14,cursor:"pointer",background:a?c.olive:"transparent"}}><n.icon size={19} strokeWidth={1.75} color={a?c.white:`${c.white}85`}/><span style={{fontSize:14,fontWeight:a?600:450,color:a?c.white:`${c.white}85`,flex:1}}>{n.label}</span>{n.badge&&<span style={{background:a?c.white:c.olive,color:a?c.olive:c.white,fontSize:11,fontWeight:700,borderRadius:8,padding:"2px 8px"}}>{n.badge}</span>}</div>);})}</nav></div><div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px"}}><div style={{width:34,height:34,borderRadius:10,background:c.olive,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:c.white}}>{(company?.company_name||"P").charAt(0)}</div><div style={{flex:1,minWidth:0}}><div style={{color:c.white,fontSize:13,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{company?.company_name||"Profil podjetja"}</div><div style={{color:`${c.white}55`,fontSize:11}}>Moj profil</div></div></div></aside>
     <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
       <header style={{display:"flex",alignItems:"center",gap:16,padding:"16px 28px",background:c.white,borderBottom:`1px solid ${c.border}`}}><div style={{flex:1,display:"flex",alignItems:"center",gap:10,background:c.ivory,border:`1px solid ${c.border}`,borderRadius:12,padding:"12px 16px",height:48}}><Search size={18} color={c.t3}/><input placeholder="Išči po razpisih …" style={{border:"none",background:"transparent",outline:"none",fontSize:14,color:c.t1,fontFamily:f,flex:1}}/></div><div style={{display:"flex",alignItems:"center",gap:10,fontSize:13,color:c.t2}}>Pogovorni jezik<div onClick={()=>setLt(!lt)} style={{width:44,height:24,borderRadius:12,background:lt?c.olive:c.border,position:"relative",cursor:"pointer"}}><div style={{width:18,height:18,borderRadius:"50%",background:c.white,position:"absolute",top:3,left:lt?23:3,transition:"left .2s"}}/></div></div><div style={{position:"relative"}}><Bell size={20} color={c.t2}/><span style={{position:"absolute",top:-4,right:-4,width:16,height:16,borderRadius:"50%",background:c.olive,color:c.white,fontSize:9,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>3</span></div></header>
       <div style={{flex:1,display:"flex",overflow:"hidden"}}>
@@ -497,7 +562,7 @@ function Dashboard({maticna}){
           <div style={{background:c.white,border:`1px solid ${c.border}`,borderRadius:18,padding:"40px 44px",marginBottom:28}}><h1 style={{fontSize:32,fontWeight:700,lineHeight:1.12,color:c.t1,maxWidth:580}}>AI prevod birokratskega jezika.<br/><span style={{color:c.olive}}>Prave priložnosti.</span></h1><div style={{display:"flex",gap:32,marginTop:28}}>{[{I:FileText,t:"AI PREVOD",d:"Prevedeni v pogovorni jezik"},{I:Sparkles,t:"PAMETNO UJEMANJE",d:"Glede na vaš profil in cilje"},{I:Bell,t:"PRAVOČASNA OBVESTILA",d:"Nikoli več zamujenih rokov"}].map(b=><div key={b.t} style={{display:"flex",alignItems:"flex-start",gap:12,flex:1}}><div style={{width:40,height:40,borderRadius:10,background:c.cream,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><b.I size={18} strokeWidth={1.75} color={c.t1}/></div><div><div style={{fontSize:11,fontWeight:700,letterSpacing:".04em",color:c.t1,marginBottom:3}}>{b.t}</div><div style={{fontSize:13,color:c.t2,lineHeight:1.4}}>{b.d}</div></div></div>)}</div></div>
           <h2 style={{fontSize:22,fontWeight:700,marginBottom:16}}>Priložnosti za vas</h2>
           <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:20}}>{["Vse","Najbolj ustrezne","Novo","Odprto","KMU","Digitalizacija","Trajnost"].map(fi=><button key={fi} onClick={()=>setAf(fi)} style={{padding:"7px 16px",borderRadius:8,border:"none",fontSize:13,fontWeight:af===fi?600:450,fontFamily:f,cursor:"pointer",background:af===fi?c.graphite:"transparent",color:af===fi?c.white:c.t2}}>{fi}</button>)}</div>
-          <div style={{display:"flex",flexDirection:"column",gap:10}}>{grants.map(g=>{const isSel=sel?.id===g.id;return(<div key={g.id} onClick={()=>{setSel(g);setShowD(true);}} style={{display:"grid",gridTemplateColumns:"48px 1fr auto auto 16px",alignItems:"center",gap:16,padding:"20px 22px",borderRadius:16,border:`1px solid ${isSel?c.olive:c.border}`,background:isSel?c.oliveLight:c.white,cursor:"pointer"}}><GrantIcon type={g.icon}/><div style={{minWidth:0}}>{g.topMatch&&<span style={{background:c.olive,color:c.white,fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:5,display:"inline-block",marginBottom:4}}>TOP UJEMANJE</span>}<div style={{fontSize:15,fontWeight:600,color:c.t1,lineHeight:1.3,marginBottom:4}}>{g.title}</div><div style={{fontSize:12,color:c.t2,marginBottom:6}}>{g.funder}</div><div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{g.tags.map(t=><Tag key={t} label={t}/>)}{g.status==="open"&&<Tag label="ODPRTO" variant="status"/>}{g.status==="upcoming"&&<Tag label={g.deadline} variant="deadline"/>}</div></div><div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}><SignalBars score={g.matchScore}/><div><div style={{fontSize:18,fontWeight:700,color:c.t1,lineHeight:1}}>{g.matchScore}%</div><div style={{fontSize:10,color:c.t3}}>ujemanje</div></div></div><div style={{textAlign:"right",flexShrink:0}}><div style={{fontSize:14,fontWeight:700,color:c.t1}}>{g.amountLabel}</div><div style={{fontSize:11,color:c.t2}}>{g.fundingType}</div></div><ChevronRight size={16} color={c.t3}/></div>);})}</div>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>{grantItems.map(g=>{const isSel=sel?.id===g.id;return(<div key={g.id} onClick={()=>{setSel(g);setShowD(true);}} style={{display:"grid",gridTemplateColumns:"48px 1fr auto auto 16px",alignItems:"center",gap:16,padding:"20px 22px",borderRadius:16,border:`1px solid ${isSel?c.olive:c.border}`,background:isSel?c.oliveLight:c.white,cursor:"pointer"}}><GrantIcon type={g.icon}/><div style={{minWidth:0}}>{g.topMatch&&<span style={{background:c.olive,color:c.white,fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:5,display:"inline-block",marginBottom:4}}>TOP UJEMANJE</span>}<div style={{fontSize:15,fontWeight:600,color:c.t1,lineHeight:1.3,marginBottom:4}}>{g.title}</div><div style={{fontSize:12,color:c.t2,marginBottom:6}}>{g.funder}</div><div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{g.tags.map(t=><Tag key={t} label={t}/>)}{g.status==="open"&&<Tag label="ODPRTO" variant="status"/>}{g.status==="upcoming"&&<Tag label={g.deadline} variant="deadline"/>}</div></div><div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}><SignalBars score={g.matchScore}/><div><div style={{fontSize:18,fontWeight:700,color:c.t1,lineHeight:1}}>{g.matchScore}%</div><div style={{fontSize:10,color:c.t3}}>ujemanje</div></div></div><div style={{textAlign:"right",flexShrink:0}}><div style={{fontSize:14,fontWeight:700,color:c.t1}}>{g.amountLabel}</div><div style={{fontSize:11,color:c.t2}}>{g.fundingType}</div></div><ChevronRight size={16} color={c.t3}/></div>);})}</div>
         </div>}
         {navSel!=="Moj profil"&&showD&&sel&&<aside style={{width:420,minWidth:420,borderLeft:`1px solid ${c.border}`,background:c.white,overflowY:"auto",padding:"24px 26px 40px"}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:18}}>{sel.topMatch?<span style={{background:c.olive,color:c.white,fontSize:10,fontWeight:700,padding:"4px 12px",borderRadius:6}}>TOP UJEMANJE</span>:<div/>}<div onClick={()=>setShowD(false)} style={{width:32,height:32,borderRadius:8,background:c.ivory,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}><X size={16} color={c.t2}/></div></div><h3 style={{fontSize:21,fontWeight:700,lineHeight:1.25,color:c.t1,marginBottom:6}}>{sel.title}</h3><div style={{fontSize:13,color:c.t2,marginBottom:14}}>{sel.funder}</div><div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:22}}>{sel.tags.map(t=><Tag key={t} label={t}/>)}{sel.status==="open"&&<Tag label="ODPRTO" variant="status"/>}{sel.status==="upcoming"&&<Tag label={sel.deadline} variant="deadline"/>}</div><div style={{marginBottom:22}}><div style={{fontSize:11,fontWeight:700,letterSpacing:".04em",color:c.t1,marginBottom:10}}>AI PREVOD BIROKRATSKEGA JEZIKA</div><div style={{background:c.cream,borderRadius:14,padding:"18px 20px",fontSize:14,lineHeight:1.6,color:c.t1,whiteSpace:"pre-line"}}>{sel.aiSummary}</div></div><div style={{marginBottom:22}}><div style={{fontSize:11,fontWeight:700,letterSpacing:".04em",color:c.t1,marginBottom:12}}>OSNOVNE INFORMACIJE</div>{[[Coins,"Višina:",sel.amountLabel.toLowerCase()],[BarChart3,"Sofin.:",sel.cofinancing],[Clock,"Rok:",sel.deadline],[Shield,"Tip:",sel.fundingType],[MapPin,"Regija:",sel.region]].map(([I,l,v])=><div key={l} style={{display:"flex",alignItems:"center",gap:10,fontSize:13,padding:"5px 0"}}><I size={16} color={c.t3}/><span style={{color:c.t2}}>{l}</span><span style={{fontWeight:600,color:c.t1}}>{v}</span></div>)}</div><div style={{marginBottom:26}}><div style={{fontSize:11,fontWeight:700,letterSpacing:".04em",color:c.t1,marginBottom:14}}>UJEMANJE Z VAŠIM PROFILOM</div><div style={{display:"flex",gap:24,alignItems:"center"}}><MatchRing score={sel.matchScore} size={100}/><div style={{display:"flex",flexDirection:"column",gap:7}}>{sel.checklist.map(item=><div key={item.label} style={{display:"flex",alignItems:"center",gap:8,fontSize:13}}><Check size={15} strokeWidth={2.5} color={item.p?c.olive:c.t3}/><span style={{color:item.p?c.t1:c.t3}}>{item.label}</span></div>)}</div></div></div><div style={{display:"flex",gap:10}}><button style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"13px 20px",borderRadius:10,border:"none",background:c.graphite,color:c.white,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:f}}>PODROBNOSTI <ExternalLink size={14}/></button><button style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"13px 20px",borderRadius:10,border:`1px solid ${c.t1}`,background:"transparent",color:c.t1,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:f}}>SHRANI <Bookmark size={14}/></button></div></aside>}
       </div>

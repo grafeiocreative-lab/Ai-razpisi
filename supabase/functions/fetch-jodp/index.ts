@@ -1,12 +1,18 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
 Deno.serve(async (req) => {
   const JODP_URL = "https://jodp.mf.gov.si";
 
   const json = (payload: unknown, status = 200) =>
     new Response(JSON.stringify(payload, null, 2), {
       status,
-      headers: { "Content-Type": "application/json" },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 
   const safeJson = async (r: Request) => { try { return await r.json(); } catch { return {}; } };
@@ -99,6 +105,7 @@ Deno.serve(async (req) => {
   };
 
   try {
+    if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
     if (req.method !== "POST") return json({ ok: false, error: "POST only" }, 405);
 
     const body = await safeJson(req);
