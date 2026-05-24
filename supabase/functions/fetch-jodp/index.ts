@@ -2,6 +2,141 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const JODP_URL = "https://jodp.mf.gov.si";
 
+/* ─── helpers ─────────────────────────────────────── */
+
+function json(payload: unknown, status = 200) {
+  return new Response(JSON.stringify(payload, null, 2), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+async function safeJson(req: Request) {
+  try { return await req.json(); } catch { return {}; }
+}
+
+function browserHeaders() {
+  return {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  };
+}
+
+function extractCookies(headers: Headers): string {
+  try {
+    const setCookies = headers.getSetCookie?.() || [];
+    return setCookies.map((c) => c.split(";")[0]).join("; ");
+  } catch {
+    const raw = headers.get("set-cookie") || "";
+    return raw.split(",").map((c) => c.split(";")[0].trim()).filter(Boolean).join("; ");
+  }
+}
+
+function mergeCookies(a: string, b: string): string {
+  if (!b) return a;
+  if (!a) return b;
+  const map: Record<string, string> = {};
+  for (const part of `${a}; ${b}`.split(";")) {
+    const eq = part.indexOf("=");
+    if (eq > 0) map[part.substring(0, eq).trim()] = part.substring(eq + 1).trim();
+  }
+  return Object.entries(map).map(([k, v]) => `${k}=${v}`).join("; ");
+}
+
+function extractTokens(html: string): Record<string, string> {
+  const tokens: Record<string, string> = {};
+  for (const field of ["__VIEWSTATE", "__VIEWSTATEGENERATOR", "__EVENTVALIDATION"]) {
+    const match = html.match(new RegExp(`id="${field}"[^>]*value="([^"]*)"`, "i"));
+    if (match) tokens[field] = match[1];
+  }
+  return tokens;
+}
+
+function absoluteUrl(path: string): string {
+  if (!path) return `${JODP_URL}/Domov`;
+  if (path.startsWith("http")) return path;
+  return `${JODP_URL}/${path.replace(/^\.\//, "").replace(/^\//, "")}`;
+}
+
+function findFieldName(html: string, hint: string): string | null {
+  const match = html.match(new RegExp(`name="([^"]*${hint}[^"]*)"`, "i"));
+  return match ? match[1] : null;
+}
+
+function findButtonValue(html: string, name: string): string {
+  const escaped = name.replace(/\$/g, "\\$");
+  const match = html.match(new RegExp(`name="${escaped}"[^>]*value="([^"]*)"`, "i"));
+  return match ? match[1] : "";
+}
+
+function findInputByType(html: string, type: string): string | null {
+  const match = html.match(new RegExp(`<input[^>]*type="${type}"[^>]*name="([^"]+)"`, "i"));
+  return match ? match[1] : null;
+}
+
+function findSubmitButton(html: string): string | null {
+  const match = html.match(/<input[^>]*type="submit"[^>]*name="([^"]+)"/i);
+  return match ? match[1] : null;
+}
+
+function findFormAction(html: string): string | null {
+  const match = html.match(/<form[^>]*action="([^"]+)"/i);
+  return match ? match[1] : null;
+}
+
+function cleanHtmlText(value: string): string {
+  return value
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function parseSlovenianDate(value: string): string | null {
+  const match = value.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if (!match) return null;
+  const [, d, m, y] = match;
+  return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+}
+
+function parseAmount(value: string): number {
+  const cleaned = value.replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", ".");
+  const number = parseFloat(cleaned);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function parseDeMinimisRecords(html: string, maticna: string): Record<string, unknown>[] {
+  const records: Record<string, unknown>[] = [];
+  const rows = [...html.matchAll(
+    /<tr[^>]*id="MainContent_pnlDTO_gvDTO_DXDataRow\d+"[^>]*>([\s\S]*?)<\/tr>/gi
+  )];
+  for (const rowMatch of rows) {
+    const cells = [...rowMatch[1].matchAll(/<td[^>]*class="[^"]*dxgv[^"]*"[^>]*>([\s\S]*?)<\/td>/gi)]
+      .map((m) => cleanHtmlText(m[1]))
+      .filter((v) => v && v !== "..." && v !== "X");
+    if (cells.length < 6) continue;
+    const dateAwarded = parseSlovenianDate(cells[1]);
+    const amount = parseAmount(cells[5]);
+    const year = dateAwarded ? Number(dateAwarded.substring(0, 4)) : new Date().getFullYear();
+    if (amount > 0) {
+      records.push({
+        year,
+        source: cells[3],
+        amount,
+        legal_basis: cells[4],
+        date_awarded: dateAwarded,
+        raw: { maticna, rowNumber: cells[0], mssiNumber: cells[2], cells },
+      });
+    }
+  }
+  return records;
+}
+
+/* ─── main handler ─────────────────────────────────── */
+
 Deno.serve(async (req) => {
   try {
     if (req.method !== "POST") {
@@ -26,66 +161,44 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, serviceRoleKey);
     const debugInfo: Record<string, unknown> = {};
 
-    const step1 = await fetch(`${JODP_URL}/Domov`, {
-      headers: browserHeaders(),
-    });
-
-    if (!step1.ok) {
-      return json({ ok: false, error: `JODP step1 HTTP ${step1.status}` }, 500);
-    }
+    // Step 1: pridobi začetno stran
+    const step1 = await fetch(`${JODP_URL}/Domov`, { headers: browserHeaders() });
+    if (!step1.ok) return json({ ok: false, error: `JODP step1 HTTP ${step1.status}` }, 500);
 
     const html1 = await step1.text();
     const cookies1 = extractCookies(step1.headers);
     const tokens1 = extractTokens(html1);
 
     if (!tokens1.__VIEWSTATE) {
-      return json({
-        ok: false,
-        error: "Ni VIEWSTATE v koraku 1",
-        htmlSnippet: html1.substring(0, 1000),
-      }, 500);
+      return json({ ok: false, error: "Ni VIEWSTATE v koraku 1", htmlSnippet: html1.substring(0, 1000) }, 500);
     }
 
     const but1Name = findFieldName(html1, "but1") || "ctl00$MainContent$but1";
     const but1Value = findButtonValue(html1, but1Name) || "";
 
-    if (debug) {
-      debugInfo.step1 = { tokens: Object.keys(tokens1), but1Name, but1Value };
-    }
+    if (debug) debugInfo.step1 = { tokens: Object.keys(tokens1), but1Name, but1Value };
 
+    // Step 2: POST na domov, pridobi iskalno formo
     const form2: Record<string, string> = {
       __VIEWSTATE: tokens1.__VIEWSTATE,
       __EVENTVALIDATION: tokens1.__EVENTVALIDATION || "",
       [but1Name]: but1Value,
     };
-
-    if (tokens1.__VIEWSTATEGENERATOR) {
-      form2.__VIEWSTATEGENERATOR = tokens1.__VIEWSTATEGENERATOR;
-    }
+    if (tokens1.__VIEWSTATEGENERATOR) form2.__VIEWSTATEGENERATOR = tokens1.__VIEWSTATEGENERATOR;
 
     const step2 = await fetch(`${JODP_URL}/Domov`, {
       method: "POST",
-      headers: {
-        ...browserHeaders(),
-        "Content-Type": "application/x-www-form-urlencoded",
-        Cookie: cookies1,
-      },
+      headers: { ...browserHeaders(), "Content-Type": "application/x-www-form-urlencoded", Cookie: cookies1 },
       body: new URLSearchParams(form2).toString(),
       redirect: "manual",
     });
 
     let html2 = "";
     let cookies2 = mergeCookies(cookies1, extractCookies(step2.headers));
-    let step2FinalUrl = `${JODP_URL}/Domov`;
 
     if (step2.status >= 300 && step2.status < 400) {
-      const loc = step2.headers.get("location") || "";
-      step2FinalUrl = absoluteUrl(loc);
-      const r2 = await fetch(step2FinalUrl, {
-        headers: {
-          ...browserHeaders(),
-          Cookie: cookies2,
-        },
+      const r2 = await fetch(absoluteUrl(step2.headers.get("location") || ""), {
+        headers: { ...browserHeaders(), Cookie: cookies2 },
       });
       html2 = await r2.text();
       cookies2 = mergeCookies(cookies2, extractCookies(r2.headers));
@@ -94,59 +207,33 @@ Deno.serve(async (req) => {
     }
 
     const tokens2 = extractTokens(html2);
-
     const inputName =
-      findFieldName(html2, "Maticna") ||
-      findFieldName(html2, "maticna") ||
-      findFieldName(html2, "txtMaticna") ||
-      findFieldName(html2, "tbMaticna") ||
-      findInputByType(html2, "search") ||
-      findInputByType(html2, "text");
-
+      findFieldName(html2, "Maticna") || findFieldName(html2, "maticna") ||
+      findFieldName(html2, "txtMaticna") || findFieldName(html2, "tbMaticna") ||
+      findInputByType(html2, "search") || findInputByType(html2, "text");
     const btnName =
-      findFieldName(html2, "btnIsci") ||
-      findFieldName(html2, "Isci") ||
-      findFieldName(html2, "btnSearch") ||
-      findSubmitButton(html2);
+      findFieldName(html2, "btnIsci") || findFieldName(html2, "Isci") ||
+      findFieldName(html2, "btnSearch") || findSubmitButton(html2);
+    const postUrl = absoluteUrl(findFormAction(html2) || step2.headers.get("location") || "./Domov");
 
-    const formAction = findFormAction(html2) || step2.headers.get("location") || "./Domov";
-    const postUrl = absoluteUrl(formAction);
-
-    if (debug) {
-      debugInfo.step2 = { status: step2.status };
-    }
+    if (debug) debugInfo.step2 = { status: step2.status };
 
     if (!tokens2.__VIEWSTATE || !inputName) {
-      return json({
-        ok: false,
-        error: "Ni VIEWSTATE ali input polja v koraku 2",
-        inputName,
-        btnName,
-        debug: debugInfo,
-      }, 500);
+      return json({ ok: false, error: "Ni VIEWSTATE ali input polja v koraku 2", inputName, btnName, debug: debugInfo }, 500);
     }
 
+    // Step 3: iskanje po matični
     const form3: Record<string, string> = {
       __VIEWSTATE: tokens2.__VIEWSTATE,
       __EVENTVALIDATION: tokens2.__EVENTVALIDATION || "",
       [inputName]: maticna,
     };
-
-    if (tokens2.__VIEWSTATEGENERATOR) {
-      form3.__VIEWSTATEGENERATOR = tokens2.__VIEWSTATEGENERATOR;
-    }
-
-    if (btnName) {
-      form3[btnName] = "Išči";
-    }
+    if (tokens2.__VIEWSTATEGENERATOR) form3.__VIEWSTATEGENERATOR = tokens2.__VIEWSTATEGENERATOR;
+    if (btnName) form3[btnName] = "Išči";
 
     const step3 = await fetch(postUrl, {
       method: "POST",
-      headers: {
-        ...browserHeaders(),
-        "Content-Type": "application/x-www-form-urlencoded",
-        Cookie: cookies2,
-      },
+      headers: { ...browserHeaders(), "Content-Type": "application/x-www-form-urlencoded", Cookie: cookies2 },
       body: new URLSearchParams(form3).toString(),
       redirect: "manual",
     });
@@ -155,13 +242,8 @@ Deno.serve(async (req) => {
     let cookies3 = mergeCookies(cookies2, extractCookies(step3.headers));
 
     if (step3.status >= 300 && step3.status < 400) {
-      const loc = step3.headers.get("location") || "";
-      const url3 = absoluteUrl(loc);
-      const r3 = await fetch(url3, {
-        headers: {
-          ...browserHeaders(),
-          Cookie: cookies3,
-        },
+      const r3 = await fetch(absoluteUrl(step3.headers.get("location") || ""), {
+        headers: { ...browserHeaders(), Cookie: cookies3 },
       });
       html3 = await r3.text();
       cookies3 = mergeCookies(cookies3, extractCookies(r3.headers));
@@ -169,40 +251,29 @@ Deno.serve(async (req) => {
       html3 = await step3.text();
     }
 
-    if (debug) {
-      debugInfo.step3 = { status: step3.status };
-    }
+    if (debug) debugInfo.step3 = { status: step3.status };
 
+    // Step 4: klik na de minimis tab
     const tokens3 = extractTokens(html3);
+    const form4: Record<string, string> = {
+      __VIEWSTATE: tokens3.__VIEWSTATE,
+      __EVENTVALIDATION: tokens3.__EVENTVALIDATION || "",
+      __EVENTTARGET: "ctl00$MainContent$ctl01",
+      __EVENTARGUMENT: "",
+      "ctl00$MainContent$txtMaticnaStevilka": maticna,
+    };
+    if (tokens3.__VIEWSTATEGENERATOR) form4.__VIEWSTATEGENERATOR = tokens3.__VIEWSTATEGENERATOR;
 
-const form4: Record<string, string> = {
-  __VIEWSTATE: tokens3.__VIEWSTATE,
-  __EVENTVALIDATION: tokens3.__EVENTVALIDATION || "",
-  __EVENTTARGET: "ctl00$MainContent$ctl01",
-  __EVENTARGUMENT: "",
-  "ctl00$MainContent$txtMaticnaStevilka": maticna,
-};
+    const step4 = await fetch(`${JODP_URL}/Domov`, {
+      method: "POST",
+      headers: { ...browserHeaders(), "Content-Type": "application/x-www-form-urlencoded", Cookie: cookies3 },
+      body: new URLSearchParams(form4).toString(),
+    });
 
-if (tokens3.__VIEWSTATEGENERATOR) {
-  form4.__VIEWSTATEGENERATOR = tokens3.__VIEWSTATEGENERATOR;
-}
+    const html4 = await step4.text();
+    if (debug) debugInfo.step4 = { status: step4.status };
 
-const step4 = await fetch(`${JODP_URL}/Domov`, {
-  method: "POST",
-  headers: {
-    ...browserHeaders(),
-    "Content-Type": "application/x-www-form-urlencoded",
-    Cookie: cookies3,
-  },
-  body: new URLSearchParams(form4).toString(),
-});
-
-const html4 = await step4.text();
-
-if (debug) {
-  debugInfo.step4 = { status: step4.status };
-}
-
+    // Parsiranje in shranjevanje
     const records = parseDeMinimisRecords(html4, maticna);
 
     const { data: company } = await supabase
@@ -216,24 +287,20 @@ if (debug) {
 
     if (company?.id && records.length > 0) {
       for (const rec of records) {
+        const raw = rec.raw as Record<string, unknown>;
         const { error } = await supabase
           .from("de_minimis_records")
           .upsert({
             company_id: company.id,
-            mssi_number: rec.raw.mssiNumber || null,
+            mssi_number: raw.mssiNumber || null,
             provider: rec.source,
             programme: rec.legal_basis,
             amount: rec.amount,
             granted_date: rec.date_awarded || `${rec.year}-01-01`,
             source_url: `${JODP_URL}/Domov`,
-            source_payload: rec.raw,
+            source_payload: raw,
           }, { onConflict: "company_id,mssi_number,granted_date,amount", ignoreDuplicates: true });
-
-        if (error) {
-          errors.push(error.message);
-        } else {
-          saved++;
-        }
+        if (error) errors.push(error.message); else saved++;
       }
     }
 
@@ -246,7 +313,7 @@ if (debug) {
 
     const result: Record<string, unknown> = {
       ok: true,
-      version: "fetch-jodp-2026-05-22-browserHeaders-ok",
+      version: "fetch-jodp-2026-05-24-helpers-top",
       maticna,
       company_id: company?.id || null,
       records_found: records.length,
@@ -255,214 +322,10 @@ if (debug) {
       errors,
     };
 
-    if (debug) {
-      result.debug = debugInfo;
-    }
-
+    if (debug) result.debug = debugInfo;
     return json(result);
+
   } catch (err) {
     return json({ ok: false, error: String(err) }, 500);
   }
 });
-
-function parseDeMinimisRecords(html: string, maticna: string): Record<string, any>[] {
-  const records: Record<string, any>[] = [];
-
-  const rows = [...html.matchAll(
-    /<tr[^>]*id="MainContent_pnlDTO_gvDTO_DXDataRow\d+"[^>]*>([\s\S]*?)<\/tr>/gi
-  )];
-
-  for (const rowMatch of rows) {
-    const rowHtml = rowMatch[1];
-
-    const cells = [...rowHtml.matchAll(/<td[^>]*class="[^"]*dxgv[^"]*"[^>]*>([\s\S]*?)<\/td>/gi)]
-      .map((m) => cleanHtmlText(m[1]))
-      .filter((v) => v && v !== "..." && v !== "X");
-
-    if (cells.length < 6) continue;
-
-    const rowNumber = cells[0];
-    const dateAwarded = parseSlovenianDate(cells[1]);
-    const mssiNumber = cells[2];
-    const source = cells[3];
-    const legalBasis = cells[4];
-    const amount = parseAmount(cells[5]);
-
-    const year = dateAwarded
-      ? Number(dateAwarded.substring(0, 4))
-      : new Date().getFullYear();
-
-    if (amount > 0) {
-      records.push({
-        year,
-        source,
-        amount,
-        legal_basis: legalBasis,
-        date_awarded: dateAwarded,
-        raw: {
-          maticna,
-          rowNumber,
-          mssiNumber,
-          cells,
-        },
-      });
-    }
-  }
-
-  return records;
-}
-
-function findValue(row: Record<string, string>, hints: string[]): string | null {
-  for (const [key, value] of Object.entries(row)) {
-    for (const hint of hints) {
-      if (key.includes(hint)) return value;
-    }
-  }
-
-  return null;
-}
-function cleanHtmlText(value: string): string {
-  return value
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&#39;/g, "'")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function parseSlovenianDate(value: string): string | null {
-  const match = value.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
-  if (!match) return null;
-
-  const [, d, m, y] = match;
-  return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
-}
-
-function parseAmount(value: string): number {
-  const cleaned = value
-    .replace(/[^\d,.-]/g, "")
-    .replace(/\./g, "")
-    .replace(",", ".");
-
-  const number = parseFloat(cleaned);
-  return Number.isFinite(number) ? number : 0;
-}
-
-function json(payload: unknown, status = 200) {
-  return new Response(JSON.stringify(payload, null, 2), {
-    status,
-    headers: {
-      "Content-Type": "application/json",
-    },
-  });
-}
-async function safeJson(req: Request) {
-  try {
-    return await req.json();
-  } catch {
-    return {};
-  }
-}
-
-function browserHeaders() {
-  return {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-    Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-  };
-}
-
-function extractCookies(headers: Headers): string {
-  try {
-    const setCookies = headers.getSetCookie?.() || [];
-    return setCookies
-      .map((c) => c.split(";")[0])
-      .join("; ");
-  } catch {
-    const raw = headers.get("set-cookie") || "";
-    return raw
-      .split(",")
-      .map((c) => c.split(";")[0].trim())
-      .filter(Boolean)
-      .join("; ");
-  }
-}
-function extractTokens(html: string): Record<string, string> {
-  const tokens: Record<string, string> = {};
-
-  for (const field of [
-    "__VIEWSTATE",
-    "__VIEWSTATEGENERATOR",
-    "__EVENTVALIDATION",
-  ]) {
-    const match = html.match(
-      new RegExp(`id="${field}"[^>]*value="([^"]*)"`, "i")
-    );
-
-    if (match) {
-      tokens[field] = match[1];
-    }
-  }
-
-  return tokens;
-}
-
-function absoluteUrl(path: string) {
-  if (!path) return `${JODP_URL}/Domov`;
-  if (path.startsWith("http")) return path;
-
-  const cleaned = path
-    .replace(/^\.\//, "")
-    .replace(/^\//, "");
-
-  return `${JODP_URL}/${cleaned}`;
-}
-
-function findFormAction(html: string): string | null {
-  const match = html.match(/<form[^>]*action="([^"]+)"/i);
-  return match ? match[1] : null;
-}
-
-function findButtonValue(html: string, name: string): string {
-  const escaped = name.replace(/\$/g, "\\$");
-  const regex = new RegExp(`name="${escaped}"[^>]*value="([^"]*)"`, "i");
-  const match = html.match(regex);
-  return match ? match[1] : "";
-}
-
-function findInputByType(html: string, type: string): string | null {
-  const regex = new RegExp(`<input[^>]*type="${type}"[^>]*name="([^"]+)"`, "i");
-  const match = html.match(regex);
-  return match ? match[1] : null;
-}
-
-function findSubmitButton(html: string): string | null {
-  const match = html.match(/<input[^>]*type="submit"[^>]*name="([^"]+)"/i);
-  return match ? match[1] : null;
-}
-
-function findFieldName(html: string, hint: string): string | null {
-  const regex = new RegExp(`name="([^"]*${hint}[^"]*)"`, "i");
-  const match = html.match(regex);
-  return match ? match[1] : null;
-}
-
-function mergeCookies(a: string, b: string): string {
-  if (!b) return a;
-  if (!a) return b;
-
-  const map: Record<string, string> = {};
-
-  for (const part of `${a}; ${b}`.split(";")) {
-    const eq = part.indexOf("=");
-    if (eq > 0) {
-      map[part.substring(0, eq).trim()] = part.substring(eq + 1).trim();
-    }
-  }
-
-  return Object.entries(map)
-    .map(([k, v]) => `${k}=${v}`)
-    .join("; ");
-}
-
