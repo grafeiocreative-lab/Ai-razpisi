@@ -52,32 +52,6 @@ Deno.serve(async (req) => {
     return JODP_URL + "/" + path.replace(/^\.\//, "").replace(/^\//, "");
   };
 
-  const findFieldName = (html: string, hint: string): string | null => {
-    const m = html.match(new RegExp('name="([^"]*' + hint + '[^"]*)"', "i"));
-    return m ? m[1] : null;
-  };
-
-  const findButtonValue = (html: string, name: string): string => {
-    const esc = name.replace(/\$/g, "\\$");
-    const m = html.match(new RegExp('name="' + esc + '"[^>]*value="([^"]*)"', "i"));
-    return m ? m[1] : "";
-  };
-
-  const findInputByType = (html: string, type: string): string | null => {
-    const m = html.match(new RegExp('<input[^>]*type="' + type + '"[^>]*name="([^"]+)"', "i"));
-    return m ? m[1] : null;
-  };
-
-  const findSubmitButton = (html: string): string | null => {
-    const m = html.match(/<input[^>]*type="submit"[^>]*name="([^"]+)"/i);
-    return m ? m[1] : null;
-  };
-
-  const findFormAction = (html: string): string | null => {
-    const m = html.match(/<form[^>]*action="([^"]+)"/i);
-    return m ? m[1] : null;
-  };
-
   const cleanHtmlText = (value: string): string =>
     value
       .replace(/<script[\s\S]*?<\/script>/gi, "")
@@ -140,6 +114,7 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, serviceRoleKey);
     const debugInfo: Record<string, unknown> = {};
 
+    // Step1: GET /Domov — establishes __AntiXsrfToken session cookie and gets ViewState
     const step1 = await fetch(JODP_URL + "/Domov", { headers: browserHeaders() });
     if (!step1.ok) return json({ ok: false, error: "JODP step1 HTTP " + step1.status }, 500);
 
@@ -151,14 +126,15 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: "Ni VIEWSTATE v koraku 1", htmlSnippet: html1.substring(0, 500) }, 500);
     }
 
-    const but1Name = findFieldName(html1, "but1") || "ctl00$MainContent$but1";
-    const but1Value = findButtonValue(html1, but1Name) || "";
-    if (debug) debugInfo.step1 = { tokens: Object.keys(tokens1), but1Name, but1Value };
+    if (debug) debugInfo.step1 = { tokens: Object.keys(tokens1), hasCookie: cookies1.includes("AntiXsrf") };
 
+    // Step2: POST __EVENTTARGET=but1 — navigate to Podjetja search tab.
+    // but1 is a LinkButton so it uses __EVENTTARGET, not a form field name/value.
     const form2: Record<string, string> = {
       __VIEWSTATE: tokens1.__VIEWSTATE,
       __EVENTVALIDATION: tokens1.__EVENTVALIDATION || "",
-      [but1Name]: but1Value,
+      __EVENTTARGET: "ctl00$MainContent$but1",
+      __EVENTARGUMENT: "",
     };
     if (tokens1.__VIEWSTATEGENERATOR) form2.__VIEWSTATEGENERATOR = tokens1.__VIEWSTATEGENERATOR;
 
@@ -183,60 +159,42 @@ Deno.serve(async (req) => {
     }
 
     const tokens2 = extractTokens(html2);
-    const inputName =
-      findFieldName(html2, "Maticna") || findFieldName(html2, "maticna") ||
-      findFieldName(html2, "txtMaticna") || findFieldName(html2, "tbMaticna") ||
-      findInputByType(html2, "search") || findInputByType(html2, "text");
-    const btnName =
-      findFieldName(html2, "btnIsci") || findFieldName(html2, "Isci") ||
-      findFieldName(html2, "btnSearch") || findSubmitButton(html2);
-    const postUrl = absoluteUrl(findFormAction(html2) || step2.headers.get("location") || "./Domov");
+    if (debug) debugInfo.step2 = { status: step2.status, but1Active: /but1[^>]*disabled/i.test(html2) };
 
-    if (debug) debugInfo.step2 = { status: step2.status };
-
-    if (!tokens2.__VIEWSTATE || !inputName) {
-      return json({ ok: false, error: "Ni VIEWSTATE ali input polja v koraku 2", inputName, btnName, debug: debugInfo }, 500);
+    if (!tokens2.__VIEWSTATE) {
+      return json({ ok: false, error: "Ni VIEWSTATE v koraku 2", debug: debugInfo }, 500);
     }
 
+    // Step3: POST maticna with no EventTarget — registers the search term in ViewState
     const form3: Record<string, string> = {
       __VIEWSTATE: tokens2.__VIEWSTATE,
       __EVENTVALIDATION: tokens2.__EVENTVALIDATION || "",
-      [inputName]: maticna,
+      "ctl00$MainContent$txtMaticnaStevilka": maticna,
     };
     if (tokens2.__VIEWSTATEGENERATOR) form3.__VIEWSTATEGENERATOR = tokens2.__VIEWSTATEGENERATOR;
-    if (btnName) form3[btnName] = "Išči";
 
-    const step3 = await fetch(postUrl, {
+    const step3 = await fetch(JODP_URL + "/Domov", {
       method: "POST",
       headers: { ...browserHeaders(), "Content-Type": "application/x-www-form-urlencoded", Cookie: cookies2 },
       body: new URLSearchParams(form3).toString(),
-      redirect: "manual",
     });
 
-    let html3 = "";
-    let cookies3 = mergeCookies(cookies2, extractCookies(step3.headers));
-
-    if (step3.status >= 300 && step3.status < 400) {
-      const r3 = await fetch(absoluteUrl(step3.headers.get("location") || ""), {
-        headers: { ...browserHeaders(), Cookie: cookies3 },
-      });
-      html3 = await r3.text();
-      cookies3 = mergeCookies(cookies3, extractCookies(r3.headers));
-    } else {
-      html3 = await step3.text();
-    }
-
-    if (debug) debugInfo.step3 = { status: step3.status };
-
+    const html3 = await step3.text();
+    const cookies3 = mergeCookies(cookies2, extractCookies(step3.headers));
     const tokens3 = extractTokens(html3);
+
+    if (debug) debugInfo.step3 = { status: step3.status, hasDxgv: /dxgv/i.test(html3) };
+
+    // Step4: POST __EVENTTARGET=ctl01 with maticna — triggers De minimis pomoči tab search
     const form4: Record<string, string> = {
-      __VIEWSTATE: tokens3.__VIEWSTATE,
-      __EVENTVALIDATION: tokens3.__EVENTVALIDATION || "",
+      __VIEWSTATE: tokens3.__VIEWSTATE || tokens2.__VIEWSTATE,
+      __EVENTVALIDATION: tokens3.__EVENTVALIDATION || tokens2.__EVENTVALIDATION || "",
       __EVENTTARGET: "ctl00$MainContent$ctl01",
       __EVENTARGUMENT: "",
       "ctl00$MainContent$txtMaticnaStevilka": maticna,
     };
-    if (tokens3.__VIEWSTATEGENERATOR) form4.__VIEWSTATEGENERATOR = tokens3.__VIEWSTATEGENERATOR;
+    if (tokens3.__VIEWSTATEGENERATOR || tokens2.__VIEWSTATEGENERATOR)
+      form4.__VIEWSTATEGENERATOR = tokens3.__VIEWSTATEGENERATOR || tokens2.__VIEWSTATEGENERATOR;
 
     const step4 = await fetch(JODP_URL + "/Domov", {
       method: "POST",
@@ -245,15 +203,37 @@ Deno.serve(async (req) => {
     });
 
     const html4 = await step4.text();
-    if (debug) debugInfo.step4 = { status: step4.status };
 
-    const records = parseDeMinimisRecords(html4, maticna);
+    // Two JODP error cases:
+    // "ne obstaja" = company completely unknown to JODP
+    // "še ni prejel" = company in JODP system but no de minimis records
+    const companyNotInJodp = /lblError/i.test(html4) && /ne obstaja/i.test(html4);
+    const jodpMsg = (() => {
+      const m = html4.match(/lblError[^>]*>([\s\S]*?)<\/span>/i);
+      return m ? m[1].replace(/<[^>]+>/g, "").trim() : null;
+    })();
 
-    const { data: company } = await supabase
+    if (debug) {
+      const dxgvIdx = html4.toLowerCase().indexOf("dxgv");
+      debugInfo.step4 = {
+        status: step4.status,
+        hasDxgv: dxgvIdx >= 0,
+        hasDXDataRow: /DXDataRow/i.test(html4),
+        companyNotInJodp,
+        jodpMsg,
+        gridArea: dxgvIdx >= 0 ? html4.substring(Math.max(0, dxgvIdx - 200), dxgvIdx + 2000) : null,
+      };
+    }
+
+    const bestHtml = /DXDataRow/i.test(html4) ? html4 : /DXDataRow/i.test(html3) ? html3 : html4;
+    const records = parseDeMinimisRecords(bestHtml, maticna);
+
+    const { data: company, error: companyError } = await supabase
       .from("companies")
       .upsert({ registration_number: maticna }, { onConflict: "registration_number" })
       .select("id")
       .single();
+    if (companyError && debug) debugInfo.companyError = companyError.message;
 
     let saved = 0;
     const errors: string[] = [];
@@ -286,8 +266,9 @@ Deno.serve(async (req) => {
 
     const result: Record<string, unknown> = {
       ok: true,
-      version: "fetch-jodp-2026-05-24-inline",
+      version: "fetch-jodp-2026-05-25-clean",
       maticna,
+      company_in_jodp: records.length > 0 || !companyNotInJodp,
       company_id: company?.id || null,
       records_found: records.length,
       records_saved: saved,
