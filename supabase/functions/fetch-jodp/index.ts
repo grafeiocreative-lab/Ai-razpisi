@@ -1,137 +1,129 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-const JODP_URL = "https://jodp.mf.gov.si";
+Deno.serve(async (req) => {
+  const JODP_URL = "https://jodp.mf.gov.si";
 
-/* ─── helpers ─────────────────────────────────────── */
+  const json = (payload: unknown, status = 200) =>
+    new Response(JSON.stringify(payload, null, 2), {
+      status,
+      headers: { "Content-Type": "application/json" },
+    });
 
-const json = (payload: unknown, status = 200) =>
-  new Response(JSON.stringify(payload, null, 2), {
-    status,
-    headers: { "Content-Type": "application/json" },
+  const safeJson = async (r: Request) => { try { return await r.json(); } catch { return {}; } };
+
+  const browserHeaders = () => ({
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
   });
 
-const safeJson = async (req: Request) => {
-  try { return await req.json(); } catch { return {}; }
-};
-
-const browserHeaders = () => ({
-  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-});
-
-const extractCookies = (headers: Headers): string => {
-  try {
-    const setCookies = (headers as any).getSetCookie?.() || [];
-    return setCookies.map((c: string) => c.split(";")[0]).join("; ");
-  } catch {
-    return (headers.get("set-cookie") || "")
-      .split(",").map((c: string) => c.split(";")[0].trim()).filter(Boolean).join("; ");
-  }
-};
-
-const mergeCookies = (a: string, b: string): string => {
-  if (!b) return a;
-  if (!a) return b;
-  const map: Record<string, string> = {};
-  for (const part of (a + "; " + b).split(";")) {
-    const eq = part.indexOf("=");
-    if (eq > 0) map[part.substring(0, eq).trim()] = part.substring(eq + 1).trim();
-  }
-  return Object.entries(map).map(([k, v]) => k + "=" + v).join("; ");
-};
-
-const extractTokens = (html: string): Record<string, string> => {
-  const tokens: Record<string, string> = {};
-  for (const field of ["__VIEWSTATE", "__VIEWSTATEGENERATOR", "__EVENTVALIDATION"]) {
-    const match = html.match(new RegExp('id="' + field + '"[^>]*value="([^"]*)"', "i"));
-    if (match) tokens[field] = match[1];
-  }
-  return tokens;
-};
-
-const absoluteUrl = (path: string): string => {
-  if (!path) return JODP_URL + "/Domov";
-  if (path.startsWith("http")) return path;
-  return JODP_URL + "/" + path.replace(/^\.\//, "").replace(/^\//, "");
-};
-
-const findFieldName = (html: string, hint: string): string | null => {
-  const match = html.match(new RegExp('name="([^"]*' + hint + '[^"]*)"', "i"));
-  return match ? match[1] : null;
-};
-
-const findButtonValue = (html: string, name: string): string => {
-  const escaped = name.replace(/\$/g, "\\$");
-  const match = html.match(new RegExp('name="' + escaped + '"[^>]*value="([^"]*)"', "i"));
-  return match ? match[1] : "";
-};
-
-const findInputByType = (html: string, type: string): string | null => {
-  const match = html.match(new RegExp('<input[^>]*type="' + type + '"[^>]*name="([^"]+)"', "i"));
-  return match ? match[1] : null;
-};
-
-const findSubmitButton = (html: string): string | null => {
-  const match = html.match(/<input[^>]*type="submit"[^>]*name="([^"]+)"/i);
-  return match ? match[1] : null;
-};
-
-const findFormAction = (html: string): string | null => {
-  const match = html.match(/<form[^>]*action="([^"]+)"/i);
-  return match ? match[1] : null;
-};
-
-const cleanHtmlText = (value: string): string =>
-  value
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&#39;/g, "'")
-    .replace(/\s+/g, " ")
-    .trim();
-
-const parseSlovenianDate = (value: string): string | null => {
-  const match = value.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
-  if (!match) return null;
-  const [, d, m, y] = match;
-  return y + "-" + m.padStart(2, "0") + "-" + d.padStart(2, "0");
-};
-
-const parseAmount = (value: string): number => {
-  const number = parseFloat(
-    value.replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", ".")
-  );
-  return Number.isFinite(number) ? number : 0;
-};
-
-const parseDeMinimisRecords = (html: string, maticna: string): Record<string, unknown>[] => {
-  const records: Record<string, unknown>[] = [];
-  const rows = [...html.matchAll(
-    /<tr[^>]*id="MainContent_pnlDTO_gvDTO_DXDataRow\d+"[^>]*>([\s\S]*?)<\/tr>/gi
-  )];
-  for (const rowMatch of rows) {
-    const cells = [...rowMatch[1].matchAll(/<td[^>]*class="[^"]*dxgv[^"]*"[^>]*>([\s\S]*?)<\/td>/gi)]
-      .map((m) => cleanHtmlText(m[1]))
-      .filter((v) => v && v !== "..." && v !== "X");
-    if (cells.length < 6) continue;
-    const dateAwarded = parseSlovenianDate(cells[1]);
-    const amount = parseAmount(cells[5]);
-    const year = dateAwarded ? Number(dateAwarded.substring(0, 4)) : new Date().getFullYear();
-    if (amount > 0) {
-      records.push({
-        year, source: cells[3], amount,
-        legal_basis: cells[4], date_awarded: dateAwarded,
-        raw: { maticna, rowNumber: cells[0], mssiNumber: cells[2], cells },
-      });
+  const extractCookies = (headers: Headers): string => {
+    try {
+      const sc = (headers as any).getSetCookie?.() || [];
+      return sc.map((c: string) => c.split(";")[0]).join("; ");
+    } catch {
+      return (headers.get("set-cookie") || "")
+        .split(",").map((c: string) => c.split(";")[0].trim()).filter(Boolean).join("; ");
     }
-  }
-  return records;
-};
+  };
 
-/* ─── main handler ─────────────────────────────────── */
+  const mergeCookies = (a: string, b: string): string => {
+    if (!b) return a;
+    if (!a) return b;
+    const map: Record<string, string> = {};
+    for (const part of (a + "; " + b).split(";")) {
+      const eq = part.indexOf("=");
+      if (eq > 0) map[part.substring(0, eq).trim()] = part.substring(eq + 1).trim();
+    }
+    return Object.entries(map).map(([k, v]) => k + "=" + v).join("; ");
+  };
 
-Deno.serve(async (req) => {
+  const extractTokens = (html: string): Record<string, string> => {
+    const tokens: Record<string, string> = {};
+    for (const field of ["__VIEWSTATE", "__VIEWSTATEGENERATOR", "__EVENTVALIDATION"]) {
+      const m = html.match(new RegExp('id="' + field + '"[^>]*value="([^"]*)"', "i"));
+      if (m) tokens[field] = m[1];
+    }
+    return tokens;
+  };
+
+  const absoluteUrl = (path: string): string => {
+    if (!path) return JODP_URL + "/Domov";
+    if (path.startsWith("http")) return path;
+    return JODP_URL + "/" + path.replace(/^\.\//, "").replace(/^\//, "");
+  };
+
+  const findFieldName = (html: string, hint: string): string | null => {
+    const m = html.match(new RegExp('name="([^"]*' + hint + '[^"]*)"', "i"));
+    return m ? m[1] : null;
+  };
+
+  const findButtonValue = (html: string, name: string): string => {
+    const esc = name.replace(/\$/g, "\\$");
+    const m = html.match(new RegExp('name="' + esc + '"[^>]*value="([^"]*)"', "i"));
+    return m ? m[1] : "";
+  };
+
+  const findInputByType = (html: string, type: string): string | null => {
+    const m = html.match(new RegExp('<input[^>]*type="' + type + '"[^>]*name="([^"]+)"', "i"));
+    return m ? m[1] : null;
+  };
+
+  const findSubmitButton = (html: string): string | null => {
+    const m = html.match(/<input[^>]*type="submit"[^>]*name="([^"]+)"/i);
+    return m ? m[1] : null;
+  };
+
+  const findFormAction = (html: string): string | null => {
+    const m = html.match(/<form[^>]*action="([^"]+)"/i);
+    return m ? m[1] : null;
+  };
+
+  const cleanHtmlText = (value: string): string =>
+    value
+      .replace(/<script[\s\S]*?<\/script>/gi, "")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&#39;/g, "'")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const parseSlovenianDate = (value: string): string | null => {
+    const m = value.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+    if (!m) return null;
+    const [, d, mo, y] = m;
+    return y + "-" + mo.padStart(2, "0") + "-" + d.padStart(2, "0");
+  };
+
+  const parseAmount = (value: string): number => {
+    const n = parseFloat(value.replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", "."));
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const parseDeMinimisRecords = (html: string, maticna: string): Record<string, unknown>[] => {
+    const records: Record<string, unknown>[] = [];
+    const rows = [...html.matchAll(
+      /<tr[^>]*id="MainContent_pnlDTO_gvDTO_DXDataRow\d+"[^>]*>([\s\S]*?)<\/tr>/gi
+    )];
+    for (const rowMatch of rows) {
+      const cells = [...rowMatch[1].matchAll(/<td[^>]*class="[^"]*dxgv[^"]*"[^>]*>([\s\S]*?)<\/td>/gi)]
+        .map((m) => cleanHtmlText(m[1]))
+        .filter((v) => v && v !== "..." && v !== "X");
+      if (cells.length < 6) continue;
+      const dateAwarded = parseSlovenianDate(cells[1]);
+      const amount = parseAmount(cells[5]);
+      const year = dateAwarded ? Number(dateAwarded.substring(0, 4)) : new Date().getFullYear();
+      if (amount > 0) {
+        records.push({
+          year, source: cells[3], amount,
+          legal_basis: cells[4], date_awarded: dateAwarded,
+          raw: { maticna, rowNumber: cells[0], mssiNumber: cells[2], cells },
+        });
+      }
+    }
+    return records;
+  };
+
   try {
     if (req.method !== "POST") return json({ ok: false, error: "POST only" }, 405);
 
@@ -156,7 +148,7 @@ Deno.serve(async (req) => {
     const tokens1 = extractTokens(html1);
 
     if (!tokens1.__VIEWSTATE) {
-      return json({ ok: false, error: "Ni VIEWSTATE v koraku 1", htmlSnippet: html1.substring(0, 1000) }, 500);
+      return json({ ok: false, error: "Ni VIEWSTATE v koraku 1", htmlSnippet: html1.substring(0, 500) }, 500);
     }
 
     const but1Name = findFieldName(html1, "but1") || "ctl00$MainContent$but1";
@@ -294,7 +286,7 @@ Deno.serve(async (req) => {
 
     const result: Record<string, unknown> = {
       ok: true,
-      version: "fetch-jodp-2026-05-24-const-arrows",
+      version: "fetch-jodp-2026-05-24-inline",
       maticna,
       company_id: company?.id || null,
       records_found: records.length,
