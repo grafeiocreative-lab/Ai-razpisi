@@ -37,6 +37,10 @@ Deno.serve(async (req) => {
       }, 404);
     }
 
+    const rawPayload = prsRecord.raw_payload || {};
+    const postCode = String(rawPayload["Poštna št"] || rawPayload["Poštna št "] || "").trim();
+    const region = prsRecord.region || inferCohesionRegion(postCode, prsRecord.municipality || prsRecord.address);
+
     const companyPayload = {
       company_name: prsRecord.company_name,
       registration_number: prsRecord.registration_number,
@@ -44,7 +48,7 @@ Deno.serve(async (req) => {
       legal_form: prsRecord.legal_form,
       address: cleanAddress(prsRecord.address),
       municipality: prsRecord.municipality,
-      region: prsRecord.region,
+      region,
       main_activity_code: prsRecord.main_activity_code,
       main_activity_name: prsRecord.main_activity_name,
       source: "prs_cache",
@@ -112,4 +116,27 @@ function cleanAddress(value: string | null) {
     .replace(/\s+/g, " ")
     .replace(/\s+,/g, ",")
     .trim();
+}
+
+function inferCohesionRegion(postCode: string | null, location: string | null) {
+  const pc = String(postCode || "").trim();
+  const loc = String(location || "").toLowerCase();
+
+  if (/^[23689]/.test(pc)) return "Vzhodna Slovenija";
+  if (/^[145]/.test(pc)) return "Zahodna Slovenija";
+
+  const eastHints = [
+    "maribor", "celje", "ptuj", "murska sobota", "novo mesto", "krško",
+    "brežice", "velenje", "slovenj gradec", "trbovlje", "zagorje", "ormož",
+    "lendava", "radenci", "slovenska bistrica", "rogaška", "sevnica",
+  ];
+  const westHints = [
+    "ljubljana", "kranj", "koper", "nova gorica", "postojna", "idrija",
+    "izola", "piran", "ajdovščina", "logatec", "vrhnika", "domžale",
+    "kamnik", "škofja loka", "jesenice", "tolmin",
+  ];
+
+  if (eastHints.some((hint) => loc.includes(hint))) return "Vzhodna Slovenija";
+  if (westHints.some((hint) => loc.includes(hint))) return "Zahodna Slovenija";
+  return null;
 }
