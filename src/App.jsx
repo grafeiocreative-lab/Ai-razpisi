@@ -554,6 +554,9 @@ function mapGrant(row){
   const score=60+Math.min(30,tags.length*6)+(row.is_de_minimis?5:0);
   const status=effectiveGrantStatus(row);
   const qualityStatus=row.raw_payload?.quality_status||(row.source_url&&row.deadline_at?"verified":"needs_review");
+  const fundingType=row.raw_payload?.funding_type||(
+    row.is_de_minimis?"de minimis":"nepovratna sredstva"
+  );
   return{
     id:row.id,
     title,
@@ -562,7 +565,7 @@ function mapGrant(row){
     deadline:formatGrantDate(row.deadline_at),
     deadlineAt:row.deadline_at,
     amountLabel:formatGrantAmount(row.max_aid_amount),
-    fundingType:row.is_de_minimis?"de minimis":"nepovratna sredstva",
+    fundingType,
     tags:tags.length?tags:["Razpis"],
     icon:tags.join(" ").toLowerCase().includes("digital")?"digital":tags.join(" ").toLowerCase().includes("zeleni")?"green":"grant",
     matchScore:Math.min(95,score),
@@ -610,7 +613,7 @@ function SignalBars({score}){
 
 function SourceHealthPanel({items,isMobile}){
   if(!items.length)return null;
-  const label=source=>source==="evropskasredstva"?"Razpisi":source==="jodp"?"JODP":source;
+  const label=source=>source==="evropskasredstva"?"Evropska sredstva":source==="jodp"?"JODP":source==="sps"?"SPS":source;
   return(<div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(auto-fit,minmax(220px,1fr))",gap:10,marginBottom:24}}>
     {items.map(item=>{const ok=(Number(item.failure_count)||0)===0&&!item.last_error;return(
       <div key={item.source} style={{background:c.white,border:`1px solid ${ok?c.olive+"35":c.amber+"55"}`,borderLeft:`4px solid ${ok?c.olive:c.amber}`,borderRadius:12,padding:"14px 16px"}}>

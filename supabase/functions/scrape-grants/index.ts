@@ -1,8 +1,24 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const PAGES = [
-  { url: "https://evropskasredstva.si/razpisi/aktualen", status: "open" },
-  { url: "https://evropskasredstva.si/razpisi/napovedan", status: "upcoming" },
+  {
+    source: "evropskasredstva",
+    parser: "evropskasredstva",
+    url: "https://evropskasredstva.si/razpisi/aktualen",
+    status: "open",
+  },
+  {
+    source: "evropskasredstva",
+    parser: "evropskasredstva",
+    url: "https://evropskasredstva.si/razpisi/napovedan",
+    status: "upcoming",
+  },
+  {
+    source: "sps",
+    parser: "sps",
+    url: "https://www.podjetniskisklad.si/wp-json/wp/v2/posts?per_page=50&search=2026&_fields=id,date,modified,link,title,content",
+    status: "open",
+  },
 ];
 
 Deno.serve(async (req) => {
@@ -29,10 +45,13 @@ Deno.serve(async (req) => {
       parsed: 0,
       errors: [] as string[],
     };
+    const sourceStats: Record<string, { parsed: number; errors: string[] }> = {};
 
     results.closed_expired = await closeExpiredGrants(supabase);
 
     for (const page of PAGES) {
+      sourceStats[page.source] ||= { parsed: 0, errors: [] };
+
       try {
         const res = await fetch(page.url, {
           headers: {
@@ -41,14 +60,19 @@ Deno.serve(async (req) => {
         });
 
         if (!res.ok) {
-          results.errors.push(`${page.url}: HTTP ${res.status}`);
+          const message = `${page.url}: HTTP ${res.status}`;
+          results.errors.push(message);
+          sourceStats[page.source].errors.push(message);
           continue;
         }
 
-        const html = await res.text();
-        const grants = parseGrants(html, page.status, page.url);
+        const body = await res.text();
+        const grants = page.parser === "sps"
+          ? parseSpsPosts(body, page.url)
+          : parseGrants(body, page.status, page.url);
 
         results.parsed += grants.length;
+        sourceStats[page.source].parsed += grants.length;
 
         for (const grant of grants) {
           try {
@@ -66,7 +90,9 @@ Deno.serve(async (req) => {
                 .eq("id", existing.id);
 
               if (error) {
-                results.errors.push(`Update "${grant.title}": ${error.message}`);
+                const message = `Update "${grant.title}": ${error.message}`;
+                results.errors.push(message);
+                sourceStats[page.source].errors.push(message);
               } else {
                 results.updated++;
               }
@@ -76,32 +102,42 @@ Deno.serve(async (req) => {
                 .insert(grant);
 
               if (error) {
-                results.errors.push(`Insert "${grant.title}": ${error.message}`);
+                const message = `Insert "${grant.title}": ${error.message}`;
+                results.errors.push(message);
+                sourceStats[page.source].errors.push(message);
               } else {
                 results.inserted++;
               }
             }
           } catch (err) {
-            results.errors.push(`Grant "${grant.title}": ${String(err)}`);
+            const message = `Grant "${grant.title}": ${String(err)}`;
+            results.errors.push(message);
+            sourceStats[page.source].errors.push(message);
           }
         }
       } catch (err) {
-        results.errors.push(`${page.url}: ${String(err)}`);
+        const message = `${page.url}: ${String(err)}`;
+        results.errors.push(message);
+        sourceStats[page.source].errors.push(message);
       }
     }
 
-    await supabase.from("data_source_health").upsert({
-      source: "evropskasredstva",
-      last_success: results.errors.length === 0 ? new Date().toISOString() : null,
-      last_failure: results.errors.length > 0 ? new Date().toISOString() : null,
-      failure_count: results.errors.length,
-      last_error: results.errors[0] || null,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: "source" });
+    const checkedAt = new Date().toISOString();
+    for (const [source, stat] of Object.entries(sourceStats)) {
+      await supabase.from("data_source_health").upsert({
+        source,
+        last_success: stat.errors.length === 0 ? checkedAt : null,
+        last_failure: stat.errors.length > 0 ? checkedAt : null,
+        failure_count: stat.errors.length,
+        last_error: stat.errors[0] || null,
+        updated_at: checkedAt,
+      }, { onConflict: "source" });
+    }
 
     return json({
       ok: results.errors.length === 0,
       ...results,
+      sources: sourceStats,
     });
 
   } catch (err) {
@@ -123,6 +159,81 @@ async function closeExpiredGrants(supabase: ReturnType<typeof createClient>): Pr
   }
 
   return data?.length || 0;
+}
+
+function parseSpsPosts(jsonText: string, sourcePageUrl: string): Record<string, unknown>[] {
+  const posts = JSON.parse(jsonText);
+  if (!Array.isArray(posts)) return [];
+
+  const grants: Record<string, unknown>[] = [];
+
+  for (const post of posts) {
+    const title = cleanHtmlText(post?.title?.rendered || post?.title || "");
+    const sourceUrl = String(post?.link || "");
+
+    if (!isSpsGrantTitle(title) || !isHttpUrl(sourceUrl)) continue;
+
+    const contentHtml = String(post?.content?.rendered || "");
+    const text = cleanHtmlText(contentHtml);
+    const deadlineAt = parseSpsDeadline(text);
+    const fundingType = detectSpsFundingType(title + " " + text);
+    const qualityFlags = [
+      deadlineAt ? null : "missing_deadline",
+    ].filter(Boolean);
+
+    const grant: Record<string, unknown> = {
+      title,
+      provider: "Slovenski podjetniški sklad",
+      source_url: sourceUrl,
+      status: "open",
+
+      published_at: parseDate(text.match(/Objava razpisa.{0,80}/i)?.[0] || "") ||
+        String(post?.date || "").substring(0, 10) ||
+        null,
+      deadline_at: deadlineAt,
+
+      is_de_minimis: text.toLowerCase().includes("de minimis"),
+      max_aid_amount: parseLargestAmount(extractSpsSection(text, "Višina financiranja") || text),
+      funding_rate: parseFundingRate(text),
+
+      eligible_company_sizes: extractCompanySizes(text),
+      eligible_regions: extractRegions(text),
+      eligible_sectors: extractTags(title + " " + text),
+      eligible_costs: [],
+      investment_types: extractTags(title + " " + text),
+
+      raw_summary:
+        extractSpsSection(text, "Namen razpisa") ||
+        extractSpsSection(text, "Namen produkta") ||
+        extractSpsSection(text, "Namen vavčerja"),
+      plain_language_summary: null,
+      requirements:
+        extractSpsSection(text, "Pogoji za kandidiranje") ||
+        extractSpsSection(text, "Upravičenci"),
+      required_documents: [],
+
+      raw_payload: {
+        source: "podjetniskisklad.si",
+        source_page_url: sourcePageUrl,
+        wp_post_id: post?.id || null,
+        scraped_at: new Date().toISOString(),
+        quality_flags: qualityFlags,
+        quality_status: qualityFlags.length ? "needs_review" : "verified",
+        funding_type: fundingType,
+        modified_at: post?.modified || null,
+      },
+
+      last_checked_at: new Date().toISOString(),
+    };
+
+    if (grant.deadline_at && new Date(String(grant.deadline_at)).getTime() < Date.now()) {
+      grant.status = "closed";
+    }
+
+    grants.push(grant);
+  }
+
+  return grants;
 }
 
 async function findExistingGrant(
@@ -296,6 +407,104 @@ function extractUrl(block: string, label: string): string | null {
   return urlMatch ? urlMatch[1] : null;
 }
 
+function cleanHtmlText(value: string): string {
+  return value
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/?(p|div|h[1-6]|li|tr|td|th)[^>]*>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&euro;/g, "€")
+    .replace(/&#8211;/g, "–")
+    .replace(/&#8217;/g, "'")
+    .replace(/&#8220;|&#8221;/g, '"')
+    .replace(/\s+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+function isSpsGrantTitle(title: string): boolean {
+  return /^(?:P\d[\w-]*|V\d+|SK\d[\w-]*|SI-SK)\s/i.test(title) && title.includes("|");
+}
+
+function extractSpsSection(text: string, label: string): string | null {
+  const nextLabels =
+    "Namen razpisa|Namen produkta|Namen vavčerja|Razpisana sredstva|Objava razpisa|Višina financiranja|Kreditni pogoji|Pogoji za kandidiranje|Pogoji za črpanje|Upravičeni stroški|Obdobje nastanka|Razpisani roki|Razpis in dokumentacija|Upravičenci";
+
+  const regex = new RegExp(
+    label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") +
+    "\\s*[:\\n]?\\s*(.+?)(?=\\n?\\s*(?:" + nextLabels + "|$))",
+    "is"
+  );
+
+  const match = text.match(regex);
+  return match ? match[1].trim().replace(/\s+/g, " ").substring(0, 3000) : null;
+}
+
+function parseSpsDeadline(text: string): string | null {
+  const deadlineSection = extractSpsSection(text, "Razpisani roki");
+  const parsedSection = parseDeadlineDate(deadlineSection);
+  if (parsedSection) return parsedSection;
+
+  const contexts = [
+    text.match(/Vlogo se lahko odda[\s\S]{0,400}/i)?.[0],
+    text.match(/Prijavni rok[\s\S]{0,250}/i)?.[0],
+    text.match(/Rok za oddajo[\s\S]{0,250}/i)?.[0],
+    text.match(/odprt(?:a)? do[\s\S]{0,250}/i)?.[0],
+  ].filter(Boolean) as string[];
+
+  for (const context of contexts) {
+    const parsed = parseDeadlineDate(context);
+    if (parsed) return parsed;
+  }
+
+  return null;
+}
+
+function parseLargestAmount(text: string | null): number | null {
+  if (!text) return null;
+
+  const matches = [...text.matchAll(/(\d{1,3}(?:[.\s]\d{3})*(?:,\d+)?|\d+(?:,\d+)?)\s*(mio\s*)?(?:EUR|€)/gi)];
+  const amounts = matches
+    .map((match) => {
+      const clean = match[1]
+        .replace(/\s/g, "")
+        .replace(/\./g, "")
+        .replace(",", ".")
+        .trim();
+      const value = parseFloat(clean);
+      if (!Number.isFinite(value)) return null;
+      return match[2] ? value * 1_000_000 : value;
+    })
+    .filter((value): value is number => value !== null);
+
+  return amounts.length ? Math.max(...amounts) : null;
+}
+
+function parseFundingRate(text: string): number | null {
+  const match =
+    text.match(/(\d{1,3})\s*%/) ||
+    text.match(/(\d{1,3})\s*[–-]\s*odstotno/i) ||
+    text.match(/(\d{1,3})\s*odstotno/i);
+  if (!match) return null;
+  const rate = Number(match[1]);
+  return Number.isFinite(rate) && rate > 0 && rate <= 100 ? rate : null;
+}
+
+function detectSpsFundingType(text: string): string {
+  const lower = text.toLowerCase();
+  if (lower.includes("vavčer") || lower.includes("vavcer")) return "vavčer";
+  if (lower.includes("garancij")) return "garancija";
+  if (lower.includes("kredit")) return "kredit";
+  if (lower.includes("subvencij") || lower.includes("nepovrat")) return "nepovratna sredstva";
+  return "spodbuda";
+}
+
 function parseAmount(text: string | null): number | null {
   if (!text) return null;
 
@@ -315,7 +524,7 @@ function parseAmount(text: string | null): number | null {
 function parseDate(text: string | null): string | null {
   if (!text) return null;
 
-  const match = text.match(/(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})/);
+  const match = text.match(/(\d{1,2})\s*\.\s*(\d{1,2})\s*\.\s*(\d{4})/);
   if (!match) return null;
 
   const [, d, m, y] = match;
@@ -325,7 +534,7 @@ function parseDate(text: string | null): string | null {
 function parseDeadlineDate(text: string | null): string | null {
   if (!text) return null;
 
-  const matches = [...text.matchAll(/(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})/g)];
+  const matches = [...text.matchAll(/(\d{1,2})\s*\.\s*(\d{1,2})\s*\.\s*(\d{4})/g)];
   if (matches.length === 0) return null;
 
   const last = matches[matches.length - 1];
