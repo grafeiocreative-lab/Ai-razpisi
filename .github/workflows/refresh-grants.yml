@@ -1,0 +1,30 @@
+name: Refresh grants
+
+on:
+  schedule:
+    - cron: "15 5 * * *"
+  workflow_dispatch:
+
+jobs:
+  refresh-grants:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Call scrape-grants edge function
+        env:
+          SCRAPE_GRANTS_URL: ${{ secrets.SCRAPE_GRANTS_URL || 'https://fhoayfzwfsalnnpxxlak.supabase.co/functions/v1/scrape-grants' }}
+          SCRAPE_GRANTS_SECRET: ${{ secrets.SCRAPE_GRANTS_SECRET }}
+        run: |
+          set -euo pipefail
+
+          if [ -n "${SCRAPE_GRANTS_SECRET}" ]; then
+            response="$(curl -fsS -X POST "$SCRAPE_GRANTS_URL" \
+              -H "x-cron-secret: ${SCRAPE_GRANTS_SECRET}")"
+          else
+            response="$(curl -fsS -X POST "$SCRAPE_GRANTS_URL")"
+          fi
+
+          echo "$response"
+          echo "$response" | jq -e '.ok == true'
+
