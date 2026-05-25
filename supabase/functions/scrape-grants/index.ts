@@ -5,13 +5,18 @@ const PAGES = [
   { url: "https://evropskasredstva.si/razpisi/napovedan", status: "upcoming" },
 ];
 
-Deno.serve(async () => {
+Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const cronSecret = Deno.env.get("SCRAPE_GRANTS_SECRET");
 
     if (!supabaseUrl || !serviceRoleKey) {
       return json({ ok: false, error: "Missing Supabase env vars" }, 500);
+    }
+
+    if (cronSecret && req.headers.get("x-cron-secret") !== cronSecret) {
+      return json({ ok: false, error: "Unauthorized" }, 401);
     }
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
@@ -19,10 +24,13 @@ Deno.serve(async () => {
     const results = {
       inserted: 0,
       updated: 0,
+      closed_expired: 0,
       skipped: 0,
       parsed: 0,
       errors: [] as string[],
     };
+
+    results.closed_expired = await closeExpiredGrants(supabase);
 
     for (const page of PAGES) {
       try {
@@ -100,6 +108,22 @@ Deno.serve(async () => {
     return json({ ok: false, error: String(err) }, 500);
   }
 });
+
+async function closeExpiredGrants(supabase: ReturnType<typeof createClient>): Promise<number> {
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("grants")
+    .update({ status: "closed", updated_at: now })
+    .lt("deadline_at", now)
+    .in("status", ["open", "upcoming"])
+    .select("id");
+
+  if (error) {
+    throw new Error(`Close expired grants: ${error.message}`);
+  }
+
+  return data?.length || 0;
+}
 
 async function findExistingGrant(
   supabase: ReturnType<typeof createClient>,
