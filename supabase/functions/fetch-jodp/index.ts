@@ -121,6 +121,36 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, serviceRoleKey);
     const debugInfo: Record<string, unknown> = {};
 
+    // Davčna → Matična resolution: davčna je 8-mestna, matična je 10-mestna
+    let resolvedMaticna = maticna;
+    const isDavcna = maticna.length === 8;
+    if (isDavcna) {
+      const { data: byTax } = await supabase
+        .from("prs_cache")
+        .select("registration_number")
+        .eq("tax_number", maticna)
+        .maybeSingle();
+      if (byTax?.registration_number) {
+        resolvedMaticna = byTax.registration_number;
+      } else {
+        const { data: byCo } = await supabase
+          .from("companies")
+          .select("registration_number")
+          .eq("tax_number", maticna)
+          .maybeSingle();
+        if (byCo?.registration_number) resolvedMaticna = byCo.registration_number;
+      }
+      if (resolvedMaticna === maticna) {
+        return json({
+          ok: false,
+          is_davcna: true,
+          company_in_jodp: false,
+          maticna,
+          error: "Davčna številka ni bila najdena v bazi. Prosimo, vnesite matično številko (10 mest).",
+        }, 200);
+      }
+    }
+
     // Step1: GET /Domov — establishes __AntiXsrfToken session cookie and gets ViewState
     const step1 = await fetch(JODP_URL + "/Domov", { headers: browserHeaders() });
     if (!step1.ok) return json({ ok: false, error: "JODP step1 HTTP " + step1.status }, 500);
@@ -176,7 +206,7 @@ Deno.serve(async (req) => {
     const form3: Record<string, string> = {
       __VIEWSTATE: tokens2.__VIEWSTATE,
       __EVENTVALIDATION: tokens2.__EVENTVALIDATION || "",
-      "ctl00$MainContent$txtMaticnaStevilka": maticna,
+      "ctl00$MainContent$txtMaticnaStevilka": resolvedMaticna,
     };
     if (tokens2.__VIEWSTATEGENERATOR) form3.__VIEWSTATEGENERATOR = tokens2.__VIEWSTATEGENERATOR;
 
@@ -198,7 +228,7 @@ Deno.serve(async (req) => {
       __EVENTVALIDATION: tokens3.__EVENTVALIDATION || tokens2.__EVENTVALIDATION || "",
       __EVENTTARGET: "ctl00$MainContent$ctl01",
       __EVENTARGUMENT: "",
-      "ctl00$MainContent$txtMaticnaStevilka": maticna,
+      "ctl00$MainContent$txtMaticnaStevilka": resolvedMaticna,
     };
     if (tokens3.__VIEWSTATEGENERATOR || tokens2.__VIEWSTATEGENERATOR)
       form4.__VIEWSTATEGENERATOR = tokens3.__VIEWSTATEGENERATOR || tokens2.__VIEWSTATEGENERATOR;
@@ -233,11 +263,11 @@ Deno.serve(async (req) => {
     }
 
     const bestHtml = /DXDataRow/i.test(html4) ? html4 : /DXDataRow/i.test(html3) ? html3 : html4;
-    const records = parseDeMinimisRecords(bestHtml, maticna);
+    const records = parseDeMinimisRecords(bestHtml, resolvedMaticna);
 
     const { data: company, error: companyError } = await supabase
       .from("companies")
-      .upsert({ registration_number: maticna }, { onConflict: "registration_number" })
+      .upsert({ registration_number: resolvedMaticna }, { onConflict: "registration_number" })
       .select("id")
       .single();
     if (companyError && debug) debugInfo.companyError = companyError.message;
@@ -274,7 +304,8 @@ Deno.serve(async (req) => {
     const result: Record<string, unknown> = {
       ok: true,
       version: "fetch-jodp-2026-05-25-clean",
-      maticna,
+      maticna: resolvedMaticna,
+      input: maticna,
       company_in_jodp: records.length > 0 || !companyNotInJodp,
       company_id: company?.id || null,
       records_found: records.length,

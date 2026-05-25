@@ -32,10 +32,21 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
+    // Davčna → Matična resolution: davčna je 8-mestna, matična je 10-mestna
+    let resolvedRegistration = registrationNumber;
+    if (registrationNumber.length === 8) {
+      const { data: byTax } = await supabase
+        .from("prs_cache")
+        .select("registration_number")
+        .eq("tax_number", registrationNumber)
+        .maybeSingle();
+      if (byTax?.registration_number) resolvedRegistration = byTax.registration_number;
+    }
+
     const { data: prsRecord, error: prsError } = await supabase
       .from("prs_cache")
       .select("*")
-      .eq("registration_number", registrationNumber)
+      .eq("registration_number", resolvedRegistration)
       .single();
 
     if (prsError || !prsRecord) {
