@@ -530,6 +530,13 @@ function formatLastChecked(value){
   return d.toLocaleDateString("sl-SI",{day:"2-digit",month:"2-digit",year:"numeric"});
 }
 
+function formatDateTime(value){
+  if(!value)return"ni podatka";
+  const d=new Date(value);
+  if(Number.isNaN(d.getTime()))return"ni podatka";
+  return d.toLocaleString("sl-SI",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});
+}
+
 function sourceHost(value){
   try{return new URL(value).hostname.replace(/^www\./,"");}
   catch{return"vir ni naveden";}
@@ -601,10 +608,28 @@ function SignalBars({score}){
   return(<div style={{display:"flex",alignItems:"flex-end",gap:2,height:20}}>{Array.from({length:5}).map((_,i)=><div key={i} style={{width:4,height:6+i*3,borderRadius:1.5,background:i<filled?col:`${c.t3}25`}}/>)}</div>);
 }
 
+function SourceHealthPanel({items,isMobile}){
+  if(!items.length)return null;
+  const label=source=>source==="evropskasredstva"?"Razpisi":source==="jodp"?"JODP":source;
+  return(<div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(auto-fit,minmax(220px,1fr))",gap:10,marginBottom:24}}>
+    {items.map(item=>{const ok=(Number(item.failure_count)||0)===0&&!item.last_error;return(
+      <div key={item.source} style={{background:c.white,border:`1px solid ${ok?c.olive+"35":c.amber+"55"}`,borderLeft:`4px solid ${ok?c.olive:c.amber}`,borderRadius:12,padding:"14px 16px"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,marginBottom:8}}>
+          <div style={{fontSize:12,fontWeight:700,color:c.t1}}>{label(item.source)}</div>
+          <span style={{fontSize:10,fontWeight:800,color:ok?c.olive:c.amber,background:ok?c.oliveLight:c.amberLight,padding:"3px 8px",borderRadius:6}}>{ok?"OK":"NAPAKA"}</span>
+        </div>
+        <div style={{fontSize:12,color:c.t2,lineHeight:1.45}}>Zadnji uspeh: <strong style={{color:c.t1,fontWeight:600}}>{formatDateTime(item.last_success)}</strong></div>
+        {item.last_error&&<div style={{fontSize:12,color:c.coral,lineHeight:1.45,marginTop:4,wordBreak:"break-word"}}>{item.last_error}</div>}
+      </div>
+    );})}
+  </div>);
+}
+
 function Dashboard({maticna}){
   const isMobile=useIsMobile();
-  const [grantItems,setGrantItems]=useState(fallbackGrants);const [sel,setSel]=useState(fallbackGrants[0]);const [af,setAf]=useState("Vse");const [showD,setShowD]=useState(true);const [lt,setLt]=useState(true);const [navSel,setNavSel]=useState("Pregled");const[company,setCompany]=useState(null);
+  const [grantItems,setGrantItems]=useState(fallbackGrants);const [sel,setSel]=useState(fallbackGrants[0]);const [af,setAf]=useState("Vse");const [showD,setShowD]=useState(true);const [lt,setLt]=useState(true);const [navSel,setNavSel]=useState("Pregled");const[company,setCompany]=useState(null);const[sourceHealth,setSourceHealth]=useState([]);
   useEffect(()=>{let active=true;(async()=>{const today=new Date().toISOString();const{data}=await sb.from("grants").select("*").in("status",["open","upcoming"]).or(`deadline_at.is.null,deadline_at.gte.${today}`).limit(40);if(!active)return;const verified=(data||[]).filter(row=>/^https?:\/\//i.test(String(row.source_url||"")));const mapped=verified.map(mapGrant);if(mapped.length){mapped[0].topMatch=true;setGrantItems(mapped);setSel(mapped[0]);}})();return()=>{active=false;};},[]);
+  useEffect(()=>{let active=true;(async()=>{const{data}=await sb.from("data_source_health").select("source,last_success,last_failure,failure_count,last_error,updated_at").order("source");if(active)setSourceHealth(data||[]);})();return()=>{active=false;};},[]);
   useEffect(()=>{if(!maticna)return;let active=true;(async()=>{const{data}=await sb.from("companies").select("company_name").eq("registration_number",maticna).maybeSingle();if(active)setCompany(data||null);})();return()=>{active=false;};},[maticna]);
   const nav=[{icon:LayoutGrid,label:"Pregled"},{icon:FileText,label:"Razpisi"},{icon:Sparkles,label:"Priložnosti zame",badge:7},{icon:User,label:"Moj profil"},{icon:Bell,label:"Opozorila"},{icon:Calendar,label:"Koledar rokov"},{icon:Bot,label:"AI pomočnik"}];
   return(<div style={{display:"flex",flexDirection:isMobile?"column":"row",minHeight:"100vh",height:isMobile?"auto":"100vh",width:"100%",fontFamily:f,background:c.ivory,color:c.t1,overflow:isMobile?"visible":"hidden"}}>
@@ -615,6 +640,7 @@ function Dashboard({maticna}){
         {navSel==="Moj profil"&&<div style={{flex:1,overflowY:isMobile?"visible":"auto"}}><CompanyProfile maticna={maticna}/></div>}
         {navSel!=="Moj profil"&&<div style={{flex:1,overflowY:isMobile?"visible":"auto",padding:isMobile?"18px 16px 28px":"28px 28px 40px"}}>
           <div style={{background:c.white,border:`1px solid ${c.border}`,borderRadius:18,padding:isMobile?"24px 18px":"40px 44px",marginBottom:28}}><h1 style={{fontSize:isMobile?25:32,fontWeight:700,lineHeight:1.12,color:c.t1,maxWidth:580}}>AI prevod birokratskega jezika.<br/><span style={{color:c.olive}}>Prave priložnosti.</span></h1><div style={{display:"flex",flexDirection:isMobile?"column":"row",gap:isMobile?14:32,marginTop:28}}>{[{I:FileText,t:"AI PREVOD",d:"Prevedeni v pogovorni jezik"},{I:Sparkles,t:"PAMETNO UJEMANJE",d:"Glede na vaš profil in cilje"},{I:Bell,t:"PRAVOČASNA OBVESTILA",d:"Nikoli več zamujenih rokov"}].map(b=><div key={b.t} style={{display:"flex",alignItems:"flex-start",gap:12,flex:1}}><div style={{width:40,height:40,borderRadius:10,background:c.cream,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><b.I size={18} strokeWidth={1.75} color={c.t1}/></div><div><div style={{fontSize:11,fontWeight:700,letterSpacing:".04em",color:c.t1,marginBottom:3}}>{b.t}</div><div style={{fontSize:13,color:c.t2,lineHeight:1.4}}>{b.d}</div></div></div>)}</div></div>
+          <SourceHealthPanel items={sourceHealth} isMobile={isMobile}/>
           <h2 style={{fontSize:22,fontWeight:700,marginBottom:16}}>Priložnosti za vas</h2>
           <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:20}}>{["Vse","Najbolj ustrezne","Novo","Odprto","KMU","Digitalizacija","Trajnost"].map(fi=><button key={fi} onClick={()=>setAf(fi)} style={{padding:"7px 16px",borderRadius:8,border:"none",fontSize:13,fontWeight:af===fi?600:450,fontFamily:f,cursor:"pointer",background:af===fi?c.graphite:"transparent",color:af===fi?c.white:c.t2}}>{fi}</button>)}</div>
           <div style={{display:"flex",flexDirection:"column",gap:10}}>{grantItems.map(g=>{const isSel=sel?.id===g.id;return(<div key={g.id} onClick={()=>{setSel(g);setShowD(true);}} style={{display:"grid",gridTemplateColumns:isMobile?"40px 1fr":"48px 1fr auto auto 16px",alignItems:"center",gap:isMobile?12:16,padding:isMobile?"16px 14px":"20px 22px",borderRadius:16,border:`1px solid ${isSel?c.olive:c.border}`,background:isSel?c.oliveLight:c.white,cursor:"pointer"}}><GrantIcon type={g.icon}/><div style={{minWidth:0}}>{g.topMatch&&<span style={{background:c.olive,color:c.white,fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:5,display:"inline-block",marginBottom:4}}>TOP UJEMANJE</span>}<div style={{fontSize:15,fontWeight:600,color:c.t1,lineHeight:1.3,marginBottom:4}}>{g.title}</div><div style={{fontSize:12,color:c.t2,marginBottom:6}}>{g.funder} · {g.sourceName} · preverjeno {g.lastChecked}</div><div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{g.tags.map(t=><Tag key={t} label={t}/>)}{g.status==="open"&&<Tag label="ODPRTO" variant="status"/>}{g.status==="upcoming"&&<Tag label="NAPOVEDAN" variant="deadline"/>}{g.deadline!=="brez roka"&&<Tag label={`ROK ${g.deadline}`} variant="deadline"/>}<Tag label={g.qualityLabel} variant="quality"/></div>{isMobile&&<div style={{display:"flex",justifyContent:"space-between",gap:12,marginTop:10,fontSize:12,color:c.t2}}><span>{g.matchScore}% ujemanje</span><strong style={{color:c.t1}}>{g.amountLabel}</strong></div>}</div>{!isMobile&&<div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}><SignalBars score={g.matchScore}/><div><div style={{fontSize:18,fontWeight:700,color:c.t1,lineHeight:1}}>{g.matchScore}%</div><div style={{fontSize:10,color:c.t3}}>ujemanje</div></div></div>}{!isMobile&&<div style={{textAlign:"right",flexShrink:0}}><div style={{fontSize:14,fontWeight:700,color:c.t1}}>{g.amountLabel}</div><div style={{fontSize:11,color:c.t2}}>{g.fundingType}</div></div>}{!isMobile&&<ChevronRight size={16} color={c.t3}/>}</div>);})}</div>
