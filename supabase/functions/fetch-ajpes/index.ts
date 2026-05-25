@@ -40,7 +40,35 @@ Deno.serve(async (req) => {
         .select("registration_number")
         .eq("tax_number", registrationNumber)
         .maybeSingle();
-      if (byTax?.registration_number) resolvedRegistration = byTax.registration_number;
+      if (byTax?.registration_number) {
+        resolvedRegistration = byTax.registration_number;
+      } else {
+        // VIES fallback: EU DDV validacija vrne firmo → iščemo v prs_cache po imenu
+        try {
+          const viesResp = await fetch(
+            `https://ec.europa.eu/taxation_customs/vies/rest-api/ms/SI/vat/${registrationNumber}`
+          );
+          if (viesResp.ok) {
+            const vies = await viesResp.json();
+            if (vies.isValid && vies.name) {
+              const searchName = vies.name.split(",")[0].trim();
+              const { data: byName } = await supabase
+                .from("prs_cache")
+                .select("registration_number")
+                .ilike("company_name", `${searchName}%`)
+                .limit(1)
+                .maybeSingle();
+              if (byName?.registration_number) {
+                resolvedRegistration = byName.registration_number;
+                await supabase
+                  .from("prs_cache")
+                  .update({ tax_number: registrationNumber })
+                  .eq("registration_number", resolvedRegistration);
+              }
+            }
+          }
+        } catch { /* VIES ni dosegljiv */ }
+      }
     }
 
     const { data: prsRecord, error: prsError } = await supabase

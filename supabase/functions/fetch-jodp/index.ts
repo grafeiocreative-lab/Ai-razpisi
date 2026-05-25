@@ -141,6 +141,36 @@ Deno.serve(async (req) => {
         if (byCo?.registration_number) resolvedMaticna = byCo.registration_number;
       }
       if (resolvedMaticna === maticna) {
+        // Zadnji poskus: VIES EU DDV validacija vrne firmo → iščemo v prs_cache po imenu
+        try {
+          const viesResp = await fetch(
+            `https://ec.europa.eu/taxation_customs/vies/rest-api/ms/SI/vat/${maticna}`
+          );
+          if (viesResp.ok) {
+            const vies = await viesResp.json();
+            if (vies.isValid && vies.name) {
+              // Vzami besedi pred prvim vejico kot iskalni niz
+              const searchName = vies.name.split(",")[0].trim();
+              const { data: byName } = await supabase
+                .from("prs_cache")
+                .select("registration_number")
+                .ilike("company_name", `${searchName}%`)
+                .limit(1)
+                .maybeSingle();
+              if (byName?.registration_number) {
+                resolvedMaticna = byName.registration_number;
+                // Zakešaj davčno za prihodnje iskanje
+                await supabase
+                  .from("prs_cache")
+                  .update({ tax_number: maticna })
+                  .eq("registration_number", resolvedMaticna);
+              }
+            }
+          }
+        } catch { /* VIES ni dosegljiv — preskočimo */ }
+      }
+
+      if (resolvedMaticna === maticna) {
         return json({
           ok: false,
           is_davcna: true,
