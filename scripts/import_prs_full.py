@@ -28,10 +28,9 @@ SSL_CTX = ssl._create_unverified_context()
 
 # ── Konfiguracija ──────────────────────────────────────
 SUPABASE_URL = "https://fhoayfzwfsalnnpxxlak.supabase.co"
-SERVICE_ROLE_KEY = os.environ.get(
-    "SUPABASE_SERVICE_ROLE_KEY",
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZob2F5Znp3ZnNhbG5ucHh4bGFrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTI4MTQzMCwiZXhwIjoyMDk0ODU3NDMwfQ.xw2gCoW8Hl9W0kK9Oi-7ctp9NqbPD3J13q1LqOyqLz4"
-)
+SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+if not SERVICE_ROLE_KEY:
+    raise SystemExit("Missing SUPABASE_SERVICE_ROLE_KEY environment variable.")
 ZIP_URL = "https://podatki.gov.si/dataset/9ee1a9aa-c224-4995-b2ad-3760d7af0748/resource/3ac0b7fc-eaf3-4bd6-81c0-5ade530dc9a6/download/"
 LOCAL_ZIP = "/tmp/prs_bundle.zip"
 CSV_NAME = "opsiprs-beb70929-3d0d-41c6-9af2-25d525d906d3.csv"
