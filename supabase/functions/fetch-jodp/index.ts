@@ -140,6 +140,7 @@ Deno.serve(async (req) => {
           .maybeSingle();
         if (byCo?.registration_number) resolvedMaticna = byCo.registration_number;
       }
+      let viesCompany: { name: string; address: string } | null = null;
       if (resolvedMaticna === maticna) {
         // Zadnji poskus: VIES EU DDV validacija vrne firmo → iščemo v prs_cache po imenu
         try {
@@ -149,6 +150,7 @@ Deno.serve(async (req) => {
           if (viesResp.ok) {
             const vies = await viesResp.json();
             if (vies.isValid && vies.name) {
+              viesCompany = { name: vies.name, address: vies.address || "" };
               // Vzami besedi pred prvim vejico kot iskalni niz
               const searchName = vies.name.split(",")[0].trim();
               const { data: byName } = await supabase
@@ -176,6 +178,7 @@ Deno.serve(async (req) => {
           is_davcna: true,
           company_in_jodp: false,
           maticna,
+          vies_company: viesCompany,
           error: "Davčna številka ni bila najdena v bazi. Prosimo, vnesite matično številko (10 mest).",
         }, 200);
       }

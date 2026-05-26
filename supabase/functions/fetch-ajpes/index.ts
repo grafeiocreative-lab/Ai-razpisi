@@ -34,6 +34,7 @@ Deno.serve(async (req) => {
 
     // Davčna → Matična resolution: davčna je 8-mestna, matična je 10-mestna
     let resolvedRegistration = registrationNumber;
+    let viesCompany: { name: string; address: string } | null = null;
     if (registrationNumber.length === 8) {
       const { data: byTax } = await supabase
         .from("prs_cache")
@@ -51,6 +52,7 @@ Deno.serve(async (req) => {
           if (viesResp.ok) {
             const vies = await viesResp.json();
             if (vies.isValid && vies.name) {
+              viesCompany = { name: vies.name, address: vies.address || "" };
               const searchName = vies.name.split(",")[0].trim();
               const { data: byName } = await supabase
                 .from("prs_cache")
@@ -82,7 +84,8 @@ Deno.serve(async (req) => {
         ok: false,
         status: "not_found",
         message: "Podjetje ni najdeno v lokalnem PRS cache.",
-        registration_number: registrationNumber
+        registration_number: registrationNumber,
+        vies_company: viesCompany,
       }, 404);
     }
 
