@@ -6,9 +6,11 @@ Prebere ZIP direktno z OPSI portala (ali iz /tmp če že naložen),
 parsira CSV (UTF-16LE), in naredi batch upsert v prs_cache.
 
 Uporaba:
-  python3 scripts/import_prs_full.py
-  python3 scripts/import_prs_full.py --offset 110000   # nadaljuj od 110k
-  python3 scripts/import_prs_full.py --dry-run          # samo pokaži prvih 5 vrstic
+  python3 scripts/import_prs_full.py                              # vse naenkrat
+  python3 scripts/import_prs_full.py --limit 50000               # prvih 50k
+  python3 scripts/import_prs_full.py --offset 50000 --limit 50000 # drugi del (50k–100k)
+  python3 scripts/import_prs_full.py --offset 100000             # nadaljuj od 100k do konca
+  python3 scripts/import_prs_full.py --dry-run                   # samo pokaži prvih 5 vrstic
 """
 
 import csv
@@ -136,9 +138,13 @@ def main():
     args = sys.argv[1:]
     dry_run = "--dry-run" in args
     offset = 0
+    limit = None
     if "--offset" in args:
         idx = args.index("--offset")
         offset = int(args[idx + 1])
+    if "--limit" in args:
+        idx = args.index("--limit")
+        limit = int(args[idx + 1])
 
     if not dry_run:
         download_zip()
@@ -168,6 +174,10 @@ def main():
             if seen % 50000 == 0:
                 print(f"  Preskakovanie... {seen}")
             continue
+
+        if limit is not None and (seen - offset) > limit:
+            print(f"\n  Dosežena meja {limit} zapisov — končujem.")
+            break
 
         record = map_row(row)
         if record is None:
