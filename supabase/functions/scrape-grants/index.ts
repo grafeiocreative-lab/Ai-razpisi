@@ -16,7 +16,14 @@ const PAGES = [
   {
     source: "sps",
     parser: "sps",
-    url: "https://www.podjetniskisklad.si/wp-json/wp/v2/posts?per_page=50&search=2026&_fields=id,date,modified,link,title,content",
+    // category 83 = javni-razpisi-in-pozivi (vse aktivne vrste)
+    url: "https://www.podjetniskisklad.si/wp-json/wp/v2/posts?categories=83&per_page=50&_fields=id,date,modified,link,title,content",
+    status: "open",
+  },
+  {
+    source: "arrs",
+    parser: "arrs",
+    url: "https://www.arrs.si/sl/razpisi/26/pregled-razpisov-26.asp",
     status: "open",
   },
 ];
@@ -66,9 +73,19 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        const body = await res.text();
+        // ARRS uses Windows-1250 encoding — must decode from bytes
+        let body: string;
+        if (page.parser === "arrs") {
+          const bytes = await res.arrayBuffer();
+          body = new TextDecoder("windows-1250").decode(bytes);
+        } else {
+          body = await res.text();
+        }
+
         const grants = page.parser === "sps"
           ? parseSpsPosts(body, page.url)
+          : page.parser === "arrs"
+          ? parseArrsGrants(body, page.url)
           : parseGrants(body, page.status, page.url);
 
         results.parsed += grants.length;
@@ -171,7 +188,7 @@ function parseSpsPosts(jsonText: string, sourcePageUrl: string): Record<string, 
     const title = cleanHtmlText(post?.title?.rendered || post?.title || "");
     const sourceUrl = String(post?.link || "");
 
-    if (!isSpsGrantTitle(title) || !isHttpUrl(sourceUrl)) continue;
+    if (!isHttpUrl(sourceUrl)) continue;
 
     const contentHtml = String(post?.content?.rendered || "");
     const text = cleanHtmlText(contentHtml);
@@ -231,6 +248,109 @@ function parseSpsPosts(jsonText: string, sourcePageUrl: string): Record<string, 
     }
 
     grants.push(grant);
+  }
+
+  return grants;
+}
+
+function parseArrsGrants(html: string, sourcePageUrl: string): Record<string, unknown>[] {
+  const grants: Record<string, unknown>[] = [];
+  const BASE = "https://www.arrs.si/sl/";
+
+  // Resolve relative URL like "../../inovac/razpisi/26/razp.asp" from /sl/razpisi/26/
+  const resolveUrl = (rel: string): string => {
+    if (rel.startsWith("http")) return rel;
+    // Strip leading ../../ and prepend base
+    const clean = rel.replace(/^(?:\.\.\/)+/, "");
+    return BASE + clean;
+  };
+
+  // Parse Slovenian date "10.06.2026" → "2026-06-10T23:59:59+01:00"
+  const parseSlDate = (s: string): string | null => {
+    const m = s.match(/(\d{1,2})\s*\.\s*(\d{1,2})\s*\.\s*(\d{4})/);
+    if (!m) return null;
+    return `${m[3]}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")}T23:59:59+01:00`;
+  };
+
+  // Amount: "1.000.000" (period = thousands sep) → 1000000
+  const parseArrsAmount = (s: string): number | null => {
+    const clean = s.replace(/\./g, "").replace(",", ".").trim();
+    const n = parseFloat(clean);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+
+  // Each data row: <tr> with 6-7 <td> cells
+  const rows = [...html.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)];
+  for (const rowMatch of rows) {
+    const cells = [...rowMatch[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)]
+      .map(m => m[1]);
+    if (cells.length < 5) continue;
+
+    // Col 2 (index 2): title + link
+    const titleCell = cells[2] || "";
+    const linkMatch = titleCell.match(/href="([^"]+\.asp)"/i);
+    if (!linkMatch) continue;
+
+    const title = titleCell.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    if (title.length < 10) continue;
+
+    const sourceUrl = resolveUrl(linkMatch[1]);
+
+    // Col 1 (index 1): publication date
+    const pubDateRaw = cells[1]?.replace(/<[^>]+>/g, "").trim() || "";
+    const publishedAt = parseSlDate(pubDateRaw)?.substring(0, 10) || null;
+
+    // Col 3 (index 3): status text
+    const statusText = (cells[3] || "").replace(/<[^>]+>/g, "").trim().toLowerCase();
+    const status = statusText.includes("zaklju") ? "closed"
+      : statusText.includes("napoved") ? "upcoming"
+      : "open";
+
+    // Col 4 (index 4): deadline — take last date found
+    const deadlineCell = (cells[4] || "").replace(/<br\s*\/?>/gi, " ").replace(/<[^>]+>/g, " ");
+    const allDates = [...deadlineCell.matchAll(/(\d{1,2})\s*\.\s*(\d{1,2})\s*\.\s*(\d{4})/g)];
+    const deadlineAt = allDates.length
+      ? parseSlDate(allDates[allDates.length - 1][0])
+      : null;
+
+    // Col 6 (index 6): amount
+    const amountCell = (cells[6] || "").replace(/<[^>]+>/g, "").trim();
+    const maxAidAmount = parseArrsAmount(amountCell);
+
+    const text = title + " " + (cells[4] || "");
+    const qualityFlags = [
+      deadlineAt ? null : "missing_deadline",
+    ].filter(Boolean);
+
+    grants.push({
+      title,
+      provider: "Javna agencija za znanstvenoraziskovalno in inovacijsko dejavnost Republike Slovenije",
+      source_url: sourceUrl,
+      status,
+      published_at: publishedAt,
+      deadline_at: deadlineAt,
+      is_de_minimis: false,
+      max_aid_amount: maxAidAmount,
+      funding_rate: null,
+      eligible_company_sizes: [],
+      eligible_regions: [],
+      eligible_sectors: extractTags(text),
+      eligible_costs: [],
+      investment_types: extractTags(text),
+      raw_summary: null,
+      plain_language_summary: null,
+      requirements: null,
+      required_documents: [],
+      raw_payload: {
+        source: "arrs.si",
+        source_page_url: sourcePageUrl,
+        scraped_at: new Date().toISOString(),
+        quality_flags: qualityFlags,
+        quality_status: qualityFlags.length ? "needs_review" : "verified",
+        status_text: statusText,
+      },
+      last_checked_at: new Date().toISOString(),
+    });
   }
 
   return grants;
