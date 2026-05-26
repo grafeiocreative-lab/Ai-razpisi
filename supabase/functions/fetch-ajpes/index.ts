@@ -89,6 +89,28 @@ Deno.serve(async (req) => {
       }, 404);
     }
 
+    // Enrichment: pridobi davčno iz FiPo če manjka v prs_cache
+    let taxNumber = prsRecord.tax_number;
+    if (!taxNumber) {
+      try {
+        const fipoResp = await fetch(
+          `https://www.ajpes.si/fipo/rezultati.asp?maticna=${resolvedRegistration}`,
+          { headers: { "User-Agent": "Mozilla/5.0" } }
+        );
+        if (fipoResp.ok) {
+          const fipoHtml = await fipoResp.text();
+          const m = fipoHtml.match(/Dav[^<]{0,30}<b>(?:SI\s*)?(\d{8})<\/b>/i);
+          if (m) {
+            taxNumber = m[1];
+            await supabase
+              .from("prs_cache")
+              .update({ tax_number: taxNumber })
+              .eq("registration_number", resolvedRegistration);
+          }
+        }
+      } catch { /* FiPo ni dosegljiv */ }
+    }
+
     const rawPayload = prsRecord.raw_payload || {};
     const postCode = String(rawPayload["Poštna št"] || rawPayload["Poštna št "] || "").trim();
     const region = prsRecord.region || inferCohesionRegion(postCode, prsRecord.municipality || prsRecord.address);
@@ -96,7 +118,7 @@ Deno.serve(async (req) => {
     const companyPayload = {
       company_name: prsRecord.company_name,
       registration_number: prsRecord.registration_number,
-      tax_number: prsRecord.tax_number,
+      tax_number: taxNumber,
       legal_form: prsRecord.legal_form,
       address: cleanAddress(prsRecord.address),
       municipality: prsRecord.municipality,
