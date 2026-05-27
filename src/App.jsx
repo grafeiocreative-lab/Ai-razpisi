@@ -383,7 +383,22 @@ function Onboarding({onComplete,onBack}){
   const [emp,setEmp]=useState("18");const [rev,setRev]=useState("1.4");const [bal,setBal]=useState("0.9");
   const [sel,setSel]=useState(new Set(["digi","export"]));const ir=useRef(null);
   useEffect(()=>{if(step===1&&ir.current)ir.current.focus();},[step]);
-  useEffect(()=>{if(step!==6)return;let active=true;(async()=>{const today=new Date().toISOString();const{data}=await sb.from("grants").select("id,title,eligible_sectors,is_de_minimis,eligible_regions,source_url").in("status",["open","upcoming"]).or(`deadline_at.is.null,deadline_at.gte.${today}`).limit(80);if(!active||!data)return;const pr={interests:[...sel],kmu,dmFree,region:co?.region||null};const verified=data.filter(row=>/^https?:\/\//i.test(String(row.source_url||"")));const c60=verified.filter(row=>scoreGrant(row,pr)>=60).length;const c80=verified.filter(row=>scoreGrant(row,pr)>=80).length;if(active)setStep6Stats({total:c60,top:c80});})();return()=>{active=false;};},[step]);
+  useEffect(()=>{if(step!==6)return;let active=true;(async()=>{
+    const today=new Date().toISOString();
+    const{data}=await sb.from("grants").select("id,title,eligible_sectors,eligible_company_sizes,is_de_minimis,eligible_regions,raw_summary,requirements,source_url").in("status",["open","upcoming"]).or(`deadline_at.is.null,deadline_at.gte.${today}`).limit(200);
+    if(!active||!data)return;
+    const pr={interests:[...sel],kmu,dmFree,region:co?.region||null};
+    const verified=data.filter(row=>/^https?:\/\//i.test(String(row.source_url||"")));
+    const c60=verified.filter(row=>scoreGrant(row,pr)>=60).length;
+    const c80=verified.filter(row=>scoreGrant(row,pr)>=80).length;
+    if(active)setStep6Stats({total:c60,top:c80});
+    // Shrani profil in sproži backend matching
+    if(co?.id||ajpesResult?.company?.id){
+      const cid=co?.id||ajpesResult?.company?.id;
+      sb.functions.invoke("compute-matches",{body:{company_id:cid,interests:[...sel],kmu,dm_free:dmFree,region:co?.region||null}}).catch(()=>{});
+      sb.from("companies").update({interests:[...sel],size_class:({MIKRO:"micro",MALO:"small",SREDNJE:"medium",VELIKO:"large"})[kmu]||"small",dm_free:dmFree}).eq("id",cid).then(()=>{});
+    }
+  })();return()=>{active=false;};},[step]);
   useEffect(()=>{if(step!==2)return;setLc([]);setAjpesResult(null);setJodpResult(null);[0,1,2,3].forEach(i=>{setTimeout(()=>setLc(p=>[...p,i]),600+i*700);});let api=false,timer=false;const go=()=>{if(api&&timer)setStep(3);};setTimeout(()=>{timer=true;go();},600+4*700+600);(async()=>{try{const[ajpes,jodp]=await Promise.allSettled([sb.functions.invoke("fetch-ajpes",{body:{registration_number:iv}}),sb.functions.invoke("fetch-jodp",{body:{registration_number:iv}})]);if(jodp.status==="fulfilled")setJodpResult(jodp.value.data);let company=ajpes.status==="fulfilled"?ajpes.value.data?.company:null;if(!company){const{data}=await sb.from("companies").select("*").eq("registration_number",iv).maybeSingle();company=data;}if(company)setAjpesResult({ok:true,company});}finally{api=true;go();}})();},[step]);
   const e=parseInt(emp)||0,r=parseFloat(rev)||0;
   const kmu=e<10&&r<2?"MIKRO":e<50&&r<10?"MALO":e<250&&r<50?"SREDNJE":"VELIKO";
@@ -553,7 +568,50 @@ function effectiveGrantStatus(row){
   return row.status||"open";
 }
 
-function scoreGrant(row,profile){const tags=row.eligible_sectors||[];const hay=[...tags,row.title||""].join(" ").toLowerCase();let s=50;if(profile){const kws={digi:["digitalizacij","digital"],green:["zeleni","okolj","trajnost"],export:["izvoz","internacionalizacij"],rd:["inovacij","razvoj"],employ:["zaposlov"],energy:["energetik","energij","obnovljiv"],tourism:["turizem"],edu:["izobra","usposab"]};for(const[id,ks]of Object.entries(kws)){if(profile.interests?.includes(id)&&ks.some(k=>hay.includes(k)))s+=15;}if(tags.some(t=>t==="MSP")&&profile.kmu==="VELIKO")s-=40;if(row.is_de_minimis)s+=profile.dmFree>0?5:-20;const er=row.eligible_regions||[];if(er.length>0&&profile.region){const m=er.some(r=>r.toLowerCase().includes((profile.region||"").toLowerCase())||(profile.region||"").toLowerCase().includes(r.toLowerCase()));if(!m)s-=25;}}else{s+=Math.min(30,tags.length*6)+(row.is_de_minimis?5:0);}return Math.min(95,Math.max(10,s));}
+function scoreGrant(row,profile){
+  const tags=row.eligible_sectors||[];
+  const sizes=row.eligible_company_sizes||[];
+  // Razširi iskalno besedilo na summary in zahteve — tam je največ eligibility info
+  const hay=[...tags,row.title||"",row.raw_summary||"",row.requirements||"",row.plain_language_summary||""].join(" ").toLowerCase();
+  let s=50;
+  if(profile){
+    const kws={
+      digi:["digitalizacij","digital","informatiz","e-poslovan","it rešit"],
+      green:["zeleni","okolj","trajnost","podnebj","ekolo","obnovljiv","co2","emisij","energetsk"],
+      export:["izvoz","internacionalizacij","tuj trg","mednarod","eures"],
+      rd:["inovacij","razvoj","raziskov","r&d","tehnolog","patent","startup","zagonsk"],
+      employ:["zaposlov","delovno mest","kadr","brezposel","usposab na del"],
+      energy:["energetik","energij","obnovljiv vir","toplotn","sončn","fotovoltai","biomasa"],
+      tourism:["turizem","turistič","prenočitev","gostinst"],
+      edu:["izobra","usposab","kompetenc","znanj","šolanj","štipendij"],
+      agri:["kmetij","ribiš","gozdarst","živinorej","sadjarst","vinogradn"],
+      culture:["kultur","umetnost","avdiovizual","film","glasb"],
+    };
+    for(const[id,ks]of Object.entries(kws)){
+      if(profile.interests?.includes(id)&&ks.some(k=>hay.includes(k)))s+=15;
+    }
+    // Ujemanje velikosti podjetja
+    const sizeMap={MIKRO:"micro",MALO:"small",MSP:"small",SREDNJE:"medium",VELIKO:"large"};
+    const compSize=sizeMap[profile.kmu]||null;
+    if(sizes.length>0&&compSize){
+      if(sizes.includes(compSize)||(compSize==="micro"&&sizes.includes("small")))s+=10;
+      else if(!sizes.includes("large"))s-=20;
+    } else if(tags.some(t=>t==="MSP")&&profile.kmu==="VELIKO"){
+      s-=40;
+    }
+    // De minimis
+    if(row.is_de_minimis)s+=profile.dmFree>0?5:-20;
+    // Regija
+    const er=row.eligible_regions||[];
+    if(er.length>0&&profile.region){
+      const m=er.some(r=>r.toLowerCase().includes((profile.region||"").toLowerCase())||(profile.region||"").toLowerCase().includes(r.toLowerCase()));
+      if(!m)s-=25;
+    }
+  }else{
+    s+=Math.min(30,tags.length*6)+(row.is_de_minimis?5:0);
+  }
+  return Math.min(95,Math.max(10,s));
+}
 
 function mapGrant(row,profile){
   const tags=[...(row.eligible_sectors||[]),...(row.is_de_minimis?["de minimis"]:[])].slice(0,5);

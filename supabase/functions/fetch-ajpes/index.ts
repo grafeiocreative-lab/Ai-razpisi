@@ -18,6 +18,10 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
     const registrationNumber = String(body.registration_number || "").trim();
+    // Profil podjetja — shrani se v companies za personaliziran matching
+    const interests: string[] = Array.isArray(body.interests) ? body.interests : [];
+    const kmu: string = body.kmu || "";
+    const dmFree: number = typeof body.dm_free === "number" ? body.dm_free : 200000;
 
     if (!registrationNumber) {
       return json({ error: "Manjka registration_number" }, 400);
@@ -115,7 +119,11 @@ Deno.serve(async (req) => {
     const postCode = String(rawPayload["Poštna št"] || rawPayload["Poštna št "] || "").trim();
     const region = prsRecord.region || inferCohesionRegion(postCode, prsRecord.municipality || prsRecord.address);
 
-    const companyPayload = {
+    const sizeMap: Record<string, string> = {
+      MIKRO: "micro", MALO: "small", MSP: "small", SREDNJE: "medium", VELIKO: "large"
+    };
+
+    const companyPayload: Record<string, unknown> = {
       company_name: prsRecord.company_name,
       registration_number: prsRecord.registration_number,
       tax_number: taxNumber,
@@ -126,8 +134,13 @@ Deno.serve(async (req) => {
       main_activity_code: prsRecord.main_activity_code,
       main_activity_name: prsRecord.main_activity_name,
       source: "prs_cache",
-      source_payload: prsRecord.raw_payload
+      source_payload: prsRecord.raw_payload,
     };
+
+    // Shrani profil samo če je bil poslan (ne prepiši obstoječega z defaulti)
+    if (interests.length > 0) companyPayload.interests = interests;
+    if (kmu) companyPayload.size_class = sizeMap[kmu] || kmu.toLowerCase();
+    if (body.dm_free !== undefined) companyPayload.dm_free = dmFree;
 
     const { data: existingCompany } = await supabase
       .from("companies")
@@ -161,6 +174,21 @@ Deno.serve(async (req) => {
 
     if (dbError) {
       return json({ error: dbError.message }, 500);
+    }
+
+    // Sproži matching v ozadju — ne čakamo na odgovor
+    const companyId = (company as Record<string, unknown>)?.id;
+    if (companyId) {
+      const matchUrl = (supabaseUrl || "").replace(/\/$/, "") + "/functions/v1/compute-matches";
+      fetch(matchUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${serviceRoleKey}`,
+          "apikey": serviceRoleKey || "",
+        },
+        body: JSON.stringify({ company_id: companyId }),
+      }).catch(() => { /* matching ni kritičen */ });
     }
 
     return json({
