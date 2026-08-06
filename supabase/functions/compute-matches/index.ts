@@ -12,7 +12,7 @@ Deno.serve(async (req) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const supabase = createClient(supabaseUrl, serviceRoleKey);
+  const supabase = createClient(supabaseUrl, serviceRoleKey, { db: { schema: "ai_razpisi" } });
 
   const body = await req.json().catch(() => ({}));
   const companyId: string | null = body.company_id || null;

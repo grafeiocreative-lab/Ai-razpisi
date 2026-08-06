@@ -49,7 +49,7 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: "Unauthorized" }, 401);
     }
 
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const supabase = createClient(supabaseUrl, serviceRoleKey, { db: { schema: "ai_razpisi" } });
 
     const results = {
       inserted: 0,

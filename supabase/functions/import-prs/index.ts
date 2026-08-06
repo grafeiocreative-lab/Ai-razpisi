@@ -24,7 +24,7 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: "Missing Supabase env vars" }, 500);
     }
 
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const supabase = createClient(supabaseUrl, serviceRoleKey, { db: { schema: "ai_razpisi" } });
 
     // ── Prenesi OPSI PRS CSV ──
     const res = await fetch(PRS_URL);

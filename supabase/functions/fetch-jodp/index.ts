@@ -118,7 +118,7 @@ Deno.serve(async (req) => {
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     if (!supabaseUrl || !serviceRoleKey) return json({ ok: false, error: "Missing Supabase env vars" }, 500);
 
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const supabase = createClient(supabaseUrl, serviceRoleKey, { db: { schema: "ai_razpisi" } });
     const debugInfo: Record<string, unknown> = {};
 
     // Davčna → Matična resolution: davčna je 8-mestna, matična je 10-mestna

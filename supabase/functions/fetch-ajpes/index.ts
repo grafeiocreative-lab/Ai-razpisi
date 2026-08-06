@@ -34,7 +34,7 @@ Deno.serve(async (req) => {
       return json({ error: "Manjkajo Supabase env podatki" }, 500);
     }
 
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const supabase = createClient(supabaseUrl, serviceRoleKey, { db: { schema: "ai_razpisi" } });
 
     // Davčna → Matična resolution: davčna je 8-mestna, matična je 10-mestna
     let resolvedRegistration = registrationNumber;

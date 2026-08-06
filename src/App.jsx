@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import{createClient}from"@supabase/supabase-js";
 const sb=import.meta.env.VITE_SUPABASE_URL
-  ?createClient(import.meta.env.VITE_SUPABASE_URL,import.meta.env.VITE_SUPABASE_ANON_KEY)
+  ?createClient(import.meta.env.VITE_SUPABASE_URL,import.meta.env.VITE_SUPABASE_ANON_KEY,{db:{schema:"ai_razpisi"}})
   :null;
 
 /* ═══ TOKENS ═══════════════════════════════════════ */
@@ -395,7 +395,7 @@ function Onboarding({onComplete,onBack}){
     // Shrani profil in sproži backend matching
     if(co?.id||ajpesResult?.company?.id){
       const cid=co?.id||ajpesResult?.company?.id;
-      sb.functions.invoke("compute-matches",{body:{company_id:cid,interests:[...sel],kmu,dm_free:dmFree,region:co?.region||null}}).catch(()=>{});
+      sb.functions.invoke("compute-matches",{body:{company_id:cid,interests:[...sel],kmu,dm_free:dmFree,region:co?.region||null}}).then(({error})=>{if(error)console.error("compute-matches ni uspel:",error);}).catch(err=>console.error("compute-matches ni uspel:",err));
       sb.from("companies").update({interests:[...sel],size_class:({MIKRO:"micro",MALO:"small",SREDNJE:"medium",VELIKO:"large"})[kmu]||"small",dm_free:dmFree}).eq("id",cid).then(()=>{});
     }
   })();return()=>{active=false;};},[step]);
@@ -720,9 +720,32 @@ function SourceHealthPanel({items,isMobile}){
 function Dashboard({maticna,profile}){
   const isMobile=useIsMobile();
   const [grantItems,setGrantItems]=useState(fallbackGrants);const [sel,setSel]=useState(fallbackGrants[0]);const [af,setAf]=useState("Vse");const [showD,setShowD]=useState(true);const [lt,setLt]=useState(true);const [navSel,setNavSel]=useState("Pregled");const[company,setCompany]=useState(null);const[sourceHealth,setSourceHealth]=useState([]);
-  useEffect(()=>{let active=true;(async()=>{const today=new Date().toISOString();const{data}=await sb.from("grants").select("*").in("status",["open","upcoming"]).or(`deadline_at.is.null,deadline_at.gte.${today}`).order("deadline_at",{ascending:true,nullsFirst:false}).limit(80);if(!active)return;const verified=(data||[]).filter(row=>/^https?:\/\//i.test(String(row.source_url||"")));const mapped=verified.map(row=>mapGrant(row,profile));mapped.sort((a,b)=>b.matchScore-a.matchScore);if(mapped.length){setGrantItems(mapped);setSel(mapped[0]);}})();return()=>{active=false;};},[profile]);
+  useEffect(()=>{let active=true;(async()=>{
+    const today=new Date().toISOString();
+    // Najprej poskusi z vnaprej izračunanimi matchi iz compute-matches (backend engine)
+    if(company?.id){
+      const{data:matches,error:matchErr}=await sb.from("grant_matches").select("match_score,grants(*)").eq("company_id",company.id).order("match_score",{ascending:false}).limit(80);
+      if(matchErr)console.error("grant_matches branje ni uspelo, uporabljam lokalni izračun:",matchErr);
+      if(!active)return;
+      const fromMatches=(matches||[])
+        .filter(m=>m.grants&&/^https?:\/\//i.test(String(m.grants.source_url||""))&&["open","upcoming"].includes(effectiveGrantStatus(m.grants)))
+        .map(m=>({...mapGrant(m.grants,profile),matchScore:Math.min(95,Math.max(10,Math.round(m.match_score)))}));
+      if(fromMatches.length){
+        fromMatches.sort((a,b)=>b.matchScore-a.matchScore);
+        setGrantItems(fromMatches);setSel(fromMatches[0]);
+        return;
+      }
+    }
+    // Fallback: grant_matches še ni na voljo (nov profil, edge function ni uspela, ali brez company_id) — izračunaj lokalno
+    const{data}=await sb.from("grants").select("*").in("status",["open","upcoming"]).or(`deadline_at.is.null,deadline_at.gte.${today}`).order("deadline_at",{ascending:true,nullsFirst:false}).limit(80);
+    if(!active)return;
+    const verified=(data||[]).filter(row=>/^https?:\/\//i.test(String(row.source_url||"")));
+    const mapped=verified.map(row=>mapGrant(row,profile));
+    mapped.sort((a,b)=>b.matchScore-a.matchScore);
+    if(mapped.length){setGrantItems(mapped);setSel(mapped[0]);}
+  })();return()=>{active=false;};},[profile,company?.id]);
   useEffect(()=>{let active=true;(async()=>{const{data}=await sb.from("data_source_health").select("source,last_success,last_failure,failure_count,last_error,updated_at").order("source");if(active)setSourceHealth(data||[]);})();return()=>{active=false;};},[]);
-  useEffect(()=>{if(!maticna)return;let active=true;(async()=>{const{data}=await sb.from("companies").select("company_name").eq("registration_number",maticna).maybeSingle();if(active)setCompany(data||null);})();return()=>{active=false;};},[maticna]);
+  useEffect(()=>{if(!maticna)return;let active=true;(async()=>{const{data}=await sb.from("companies").select("id,company_name").eq("registration_number",maticna).maybeSingle();if(active)setCompany(data||null);})();return()=>{active=false;};},[maticna]);
   useEffect(()=>{const filtered=filterGrants(grantItems,af);if(filtered.length&&!filtered.some(g=>g.id===sel?.id)){setSel(filtered[0]);setShowD(true);}},[af,grantItems,sel?.id]);
   const filteredGrants=filterGrants(grantItems,af);
   const selectedIsTop=filteredGrants[0]?.id===sel?.id;
