@@ -29,7 +29,8 @@ import zipfile
 SSL_CTX = ssl._create_unverified_context()
 
 # ── Konfiguracija ──────────────────────────────────────
-SUPABASE_URL = "https://fhoayfzwfsalnnpxxlak.supabase.co"
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://cseifhrfmemvizwbmyjd.supabase.co")
+SUPABASE_SCHEMA = os.environ.get("SUPABASE_SCHEMA", "public")
 SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 if not SERVICE_ROLE_KEY:
     raise SystemExit("Missing SUPABASE_SERVICE_ROLE_KEY environment variable.")
@@ -105,6 +106,7 @@ def upsert_batch(batch: list[dict]) -> tuple[int, str | None]:
             "apikey": SERVICE_ROLE_KEY,
             "Authorization": f"Bearer {SERVICE_ROLE_KEY}",
             "Content-Type": "application/json",
+            "Content-Profile": SUPABASE_SCHEMA,
             "Prefer": "resolution=merge-duplicates,return=minimal",
         },
     )
@@ -145,6 +147,8 @@ def main():
     if "--limit" in args:
         idx = args.index("--limit")
         limit = int(args[idx + 1])
+
+    print(f"Cilj: {SUPABASE_URL}  (schema: {SUPABASE_SCHEMA})")
 
     if not dry_run:
         download_zip()

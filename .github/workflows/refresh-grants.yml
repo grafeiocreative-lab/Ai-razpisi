@@ -13,7 +13,7 @@ jobs:
     steps:
       - name: Call scrape-grants edge function
         env:
-          SCRAPE_GRANTS_URL: ${{ secrets.SCRAPE_GRANTS_URL || 'https://fhoayfzwfsalnnpxxlak.supabase.co/functions/v1/scrape-grants' }}
+          SCRAPE_GRANTS_URL: ${{ secrets.SCRAPE_GRANTS_URL || 'https://cseifhrfmemvizwbmyjd.supabase.co/functions/v1/scrape-grants' }}
           SCRAPE_GRANTS_SECRET: ${{ secrets.SCRAPE_GRANTS_SECRET }}
         run: |
           set -euo pipefail
