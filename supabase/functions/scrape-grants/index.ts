@@ -21,10 +21,17 @@ const PAGES = [
     status: "open",
   },
   {
-    source: "arrs",
-    parser: "arrs",
-    url: "https://www.arrs.si/sl/razpisi/26/pregled-razpisov-26.asp",
+    // ARRS se je preimenoval v ARIS in preselil na nov domen (avgust 2026)
+    source: "aris",
+    parser: "aris",
+    url: "https://www.aris-rs.si/objave/razpisi/odprti",
     status: "open",
+  },
+  {
+    source: "aris",
+    parser: "aris",
+    url: "https://www.aris-rs.si/objave/nacrtovani-razpisi",
+    status: "upcoming",
   },
   {
     source: "ess",
@@ -80,19 +87,12 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // ARRS uses Windows-1250 encoding — must decode from bytes
-        let body: string;
-        if (page.parser === "arrs") {
-          const bytes = await res.arrayBuffer();
-          body = new TextDecoder("windows-1250").decode(bytes);
-        } else {
-          body = await res.text();
-        }
+        const body = await res.text();
 
         const grants = page.parser === "sps"
           ? parseSpsPosts(body, page.url)
-          : page.parser === "arrs"
-          ? parseArrsGrants(body, page.url)
+          : page.parser === "aris"
+          ? parseArisGrants(body, page.url, page.status)
           : page.parser === "ess"
           ? parseEssPrograms(body, page.url)
           : parseGrants(body, page.status, page.url);
@@ -305,80 +305,71 @@ function parseEssPrograms(html: string, sourcePageUrl: string): Record<string, u
   }));
 }
 
-function parseArrsGrants(html: string, sourcePageUrl: string): Record<string, unknown>[] {
+function parseArisGrants(html: string, sourcePageUrl: string, defaultStatus: string): Record<string, unknown>[] {
+  // ARIS (nekdanji ARRS, preselil na aris-rs.si avgust 2026) — moderna stran,
+  // UTF-8, vsak razpis je <div class="razpis-card razpis-card--kartica">.
+  // Odprti razpisi imajo "Rok:" in "Razpisana vrednost:", načrtovani samo "Datum objave:".
   const grants: Record<string, unknown>[] = [];
-  const BASE = "https://www.arrs.si/sl/";
+  const ARIS_BASE = "https://www.aris-rs.si";
 
-  // Resolve relative URL like "../../inovac/razpisi/26/razp.asp" from /sl/razpisi/26/
-  const resolveUrl = (rel: string): string => {
-    if (rel.startsWith("http")) return rel;
-    // Strip leading ../../ and prepend base
-    const clean = rel.replace(/^(?:\.\.\/)+/, "");
-    return BASE + clean;
+  // "3. 9. 2026 (14:00)" → "2026-09-03T14:00:00+01:00"; brez ure → 23:59:59
+  const parseArisDeadline = (s: string): string | null => {
+    const m = s.match(/(\d{1,2})\s*\.\s*(\d{1,2})\s*\.\s*(\d{4})(?:\s*\((\d{2}):(\d{2})\))?/);
+    if (!m) return null;
+    const [, d, mo, y, h, min] = m;
+    const time = h && min ? `${h}:${min}:00` : "23:59:59";
+    return `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}T${time}+01:00`;
   };
 
-  // Parse Slovenian date "10.06.2026" → "2026-06-10T23:59:59+01:00"
-  const parseSlDate = (s: string): string | null => {
+  // "1. 9. 2026" → "2026-09-01"
+  const parseArisDateOnly = (s: string): string | null => {
     const m = s.match(/(\d{1,2})\s*\.\s*(\d{1,2})\s*\.\s*(\d{4})/);
     if (!m) return null;
-    return `${m[3]}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")}T23:59:59+01:00`;
+    const [, d, mo, y] = m;
+    return `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`;
   };
 
-  // Amount: "1.000.000" (period = thousands sep) → 1000000
-  const parseArrsAmount = (s: string): number | null => {
+  // "1.000.000,00" → 1000000 (pika = tisočice, vejica = decimalka)
+  const parseArisAmount = (s: string): number | null => {
     const clean = s.replace(/\./g, "").replace(",", ".").trim();
     const n = parseFloat(clean);
     return Number.isFinite(n) && n > 0 ? n : null;
   };
 
-  // Each data row: <tr> with 6-7 <td> cells
-  const rows = [...html.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)];
-  for (const rowMatch of rows) {
-    const cells = [...rowMatch[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)]
-      .map(m => m[1]);
-    if (cells.length < 5) continue;
+  const cards = html.split('<div class="razpis-card razpis-card--kartica">').slice(1);
 
-    // Col 2 (index 2): title + link
-    const titleCell = cells[2] || "";
-    const linkMatch = titleCell.match(/href="([^"]+\.asp)"/i);
-    if (!linkMatch) continue;
+  for (const card of cards) {
+    const titleMatch = card.match(/<h4><a href="([^"]+)">([^<]+)<\/a><\/h4>/);
+    if (!titleMatch) continue;
 
-    const title = titleCell.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-    if (title.length < 10) continue;
+    const path = titleMatch[1];
+    const title = cleanHtmlText(titleMatch[2]);
+    const sourceUrl = path.startsWith("http") ? path : `${ARIS_BASE}${path}`;
 
-    const sourceUrl = resolveUrl(linkMatch[1]);
+    const deadlineMatch = card.match(/<span>Rok:<\/span>\s*<strong>([^<]+)<\/strong>/);
+    const deadlineAt = deadlineMatch ? parseArisDeadline(deadlineMatch[1]) : null;
 
-    // Col 1 (index 1): publication date
-    const pubDateRaw = cells[1]?.replace(/<[^>]+>/g, "").trim() || "";
-    const publishedAt = parseSlDate(pubDateRaw)?.substring(0, 10) || null;
+    const amountMatch = card.match(/<span>Razpisana vrednost:<\/span>\s*<strong>([^<]+)<\/strong>/);
+    const maxAidAmount = amountMatch ? parseArisAmount(amountMatch[1]) : null;
 
-    // Col 3 (index 3): status text
-    const statusText = (cells[3] || "").replace(/<[^>]+>/g, "").trim().toLowerCase();
-    const status = statusText.includes("zaklju") ? "closed"
-      : statusText.includes("napoved") ? "upcoming"
-      : "open";
+    const publishedMatch = card.match(/<span>Datum objave:<\/span>\s*<strong>([^<]+)<\/strong>/);
+    const publishedAt = publishedMatch ? parseArisDateOnly(publishedMatch[1]) : null;
 
-    // Col 4 (index 4): deadline — take last date found
-    const deadlineCell = (cells[4] || "").replace(/<br\s*\/?>/gi, " ").replace(/<[^>]+>/g, " ");
-    const allDates = [...deadlineCell.matchAll(/(\d{1,2})\s*\.\s*(\d{1,2})\s*\.\s*(\d{4})/g)];
-    const deadlineAt = allDates.length
-      ? parseSlDate(allDates[allDates.length - 1][0])
-      : null;
+    // "Tag tag--grey" bloki nosijo kategorijo (npr. MEDNARODNA_PARTNERSTVA) na strani načrtovanih razpisov
+    const tags = [...card.matchAll(/<span class="tag tag--grey">([^<]+)<\/span>/g)]
+      .map((m) => m[1].trim())
+      .filter((t) => !/^Še\s+\d+\s+dn/i.test(t)); // izloči "Še N dni" oznako, ni kategorija
 
-    // Col 6 (index 6): amount
-    const amountCell = (cells[6] || "").replace(/<[^>]+>/g, "").trim();
-    const maxAidAmount = parseArrsAmount(amountCell);
-
-    const text = title + " " + (cells[4] || "");
+    const text = title + " " + tags.join(" ");
     const qualityFlags = [
-      deadlineAt ? null : "missing_deadline",
+      deadlineAt || defaultStatus === "upcoming" ? null : "missing_deadline",
     ].filter(Boolean);
 
     grants.push({
       title,
-      provider: "Javna agencija za znanstvenoraziskovalno in inovacijsko dejavnost Republike Slovenije",
+      provider: "Javna agencija za znanstvenoraziskovalno in inovacijsko dejavnost Republike Slovenije (ARIS)",
       source_url: sourceUrl,
-      status,
+      status: defaultStatus,
       published_at: publishedAt,
       deadline_at: deadlineAt,
       is_de_minimis: false,
@@ -394,12 +385,12 @@ function parseArrsGrants(html: string, sourcePageUrl: string): Record<string, un
       requirements: null,
       required_documents: [],
       raw_payload: {
-        source: "arrs.si",
+        source: "aris-rs.si",
         source_page_url: sourcePageUrl,
         scraped_at: new Date().toISOString(),
         quality_flags: qualityFlags,
         quality_status: qualityFlags.length ? "needs_review" : "verified",
-        status_text: statusText,
+        categories: tags,
       },
       last_checked_at: new Date().toISOString(),
     });
