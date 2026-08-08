@@ -47,6 +47,7 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     const cronSecret = Deno.env.get("SCRAPE_GRANTS_SECRET");
+    const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
 
     if (!supabaseUrl || !serviceRoleKey) {
       return json({ ok: false, error: "Missing Supabase env vars" }, 500);
@@ -64,6 +65,7 @@ Deno.serve(async (req) => {
       closed_expired: 0,
       skipped: 0,
       parsed: 0,
+      ai_summaries: 0,
       errors: [] as string[],
     };
     const sourceStats: Record<string, { parsed: number; errors: string[] }> = {};
@@ -148,6 +150,14 @@ Deno.serve(async (req) => {
       }
     }
 
+    // AI povzetki: po scrape-u in upsert-u poišči razpise brez plain_language_summary
+    // in jih dopolni s pomočjo Claude Sonnet 5 (max 10 na klic, rate limit varovalka).
+    if (anthropicKey) {
+      const { processed, errors: summaryErrors } = await generateSummaries(supabase, anthropicKey);
+      results.ai_summaries = processed;
+      results.errors.push(...summaryErrors);
+    }
+
     const checkedAt = new Date().toISOString();
     for (const [source, stat] of Object.entries(sourceStats)) {
       await supabase.from("data_source_health").upsert({
@@ -170,6 +180,100 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: String(err) }, 500);
   }
 });
+
+// ─── AI povzetki (Claude Sonnet 5) ────────────────────
+// Poišče razpise brez plain_language_summary in za vsakega pokliče Anthropic API.
+// Max 10 na klic funkcije, da ne obtičimo na rate limitu ali predolgem izvajanju.
+async function generateSummaries(
+  supabase: ReturnType<typeof createClient>,
+  apiKey: string
+): Promise<{ processed: number; errors: string[] }> {
+  const errors: string[] = [];
+  let processed = 0;
+
+  const { data: grants, error } = await supabase
+    .from("grants")
+    .select("id, title, raw_summary, requirements, max_aid_amount, deadline_at")
+    .or("plain_language_summary.is.null,plain_language_summary.eq.")
+    .in("status", ["open", "upcoming"])
+    .limit(10);
+
+  if (error) {
+    errors.push(`AI povzetki, poizvedba: ${error.message}`);
+    return { processed, errors };
+  }
+
+  for (const grant of grants || []) {
+    try {
+      const summary = await summarizeGrant(apiKey, grant);
+      const { error: updateError } = await supabase
+        .from("grants")
+        .update({ plain_language_summary: summary })
+        .eq("id", grant.id);
+
+      if (updateError) {
+        errors.push(`AI povzetek, zapis "${grant.title}": ${updateError.message}`);
+      } else {
+        processed++;
+      }
+    } catch (err) {
+      errors.push(`AI povzetek "${grant.title}": ${String(err)}`);
+    }
+  }
+
+  return { processed, errors };
+}
+
+async function summarizeGrant(
+  apiKey: string,
+  grant: { title: string; raw_summary: string | null; requirements: string | null; max_aid_amount: number | null; deadline_at: string | null }
+): Promise<string> {
+  const systemPrompt = `Si pomočnik za razlago javnih razpisov v Sloveniji. Piši v slovenščini, naravno, brez uradniškega jezika. Uporabljaj slovenske tipografske konvencije: narekovaji „..." ne "...", vejica ali dvopičje namesto pomišljaja, decimalna vejica ne pika. Piši kratko in jedrnato.`;
+
+  const znaniZnesek = grant.max_aid_amount ? `${Math.round(grant.max_aid_amount).toLocaleString("sl-SI")} €` : "ni navedeno v opisu";
+  const znaniRok = grant.deadline_at ? new Date(grant.deadline_at).toLocaleDateString("sl-SI") : "ni naveden v opisu";
+  const opis = (grant.raw_summary || grant.requirements || "").substring(0, 4000) || "Podrobnega opisa ni na voljo, sklepaj naslov razpisa.";
+
+  const userPrompt =
+    `Povzemi ta razpis v 3 stavkih za lastnika malega podjetja. Povej: komu je namenjen, koliko denarja je na voljo, kdaj je rok. Ne uporabljaj uradniškega jezika.\n\n` +
+    `Naslov: ${grant.title}\n` +
+    `Znesek iz podatkovne baze (uporabi, če opis ne pove drugače): ${znaniZnesek}\n` +
+    `Rok iz podatkovne baze (uporabi, če opis ne pove drugače): ${znaniRok}\n` +
+    `Opis: ${opis}`;
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-5",
+      max_tokens: 400,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userPrompt }],
+    }),
+  });
+
+  if (!res.ok) {
+    const bodyText = await res.text();
+    throw new Error(`Anthropic API HTTP ${res.status}: ${bodyText.substring(0, 300)}`);
+  }
+
+  const data = await res.json();
+
+  if (data.stop_reason === "refusal") {
+    throw new Error("Anthropic API je zavrnil zahtevo (refusal)");
+  }
+
+  const textBlock = (data.content || []).find((b: { type: string }) => b.type === "text");
+  if (!textBlock || !textBlock.text) {
+    throw new Error("Anthropic API ni vrnil besedila");
+  }
+
+  return textBlock.text.trim();
+}
 
 async function closeExpiredGrants(supabase: ReturnType<typeof createClient>): Promise<number> {
   const now = new Date().toISOString();
