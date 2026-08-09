@@ -16,6 +16,9 @@ const sb=import.meta.env.VITE_SUPABASE_URL
 /* ═══ TOKENS ═══════════════════════════════════════ */
 const c={graphite:"#071014",ivory:"#F7F4EC",cream:"#EFEADF",olive:"#7F9656",oliveLight:"rgba(127,150,86,0.08)",oliveMed:"rgba(127,150,86,0.15)",amber:"#D9A441",amberLight:"rgba(217,164,65,0.12)",border:"#DDD7C8",t1:"#101418",t2:"#62645F",t3:"#8A8A82",white:"#FFFFFF",signal:"#5B7CFA",signalLight:"rgba(91,124,250,0.12)",coral:"#C85A3A"};
 const f="'Inter',system-ui,-apple-system,sans-serif";
+// Serif za "uradni" register (citati iz razpisov, glavni naslov), sans za "človeški" prevod.
+// Ista logika kot produkt sam: uradno besedilo prevedemo v razumljivega.
+const fSerif="'Newsreader',Georgia,serif";
 
 function useIsMobile(){
   const get=()=>typeof window!=="undefined"&&window.matchMedia("(max-width: 760px)").matches;
@@ -64,7 +67,7 @@ function Landing({go,onStart}){
       <Nav page="landing" go={go} onStart={onStart}/>
       <section style={{...sec,padding:isMobile?"56px 16px 48px":"100px 32px 80px",textAlign:"center"}}>
         <div style={{display:"inline-flex",alignItems:"center",gap:8,padding:"6px 16px",borderRadius:8,background:c.oliveLight,border:`1px solid ${c.olive}20`,marginBottom:24}}><Sparkles size={14} color={c.olive}/><span style={{fontSize:13,fontWeight:600,color:c.olive}}>AI platforma za slovenske razpise</span></div>
-        <h1 style={{fontSize:isMobile?36:52,fontWeight:700,lineHeight:1.08,color:c.t1,marginBottom:16,maxWidth:700,margin:"0 auto 16px"}}>AI prevod birokratskega jezika. <span style={{color:c.olive}}>Prave priložnosti.</span></h1>
+        <h1 style={{fontSize:isMobile?36:52,fontWeight:600,lineHeight:1.1,color:c.t1,marginBottom:16,maxWidth:720,margin:"0 auto 16px",fontFamily:fSerif}}>AI prevod birokratskega jezika. <span style={{color:c.olive,fontFamily:f,fontWeight:800}}>Prave priložnosti.</span></h1>
         <p style={{fontSize:isMobile?16:18,color:c.t2,lineHeight:1.6,maxWidth:540,margin:"0 auto 36px"}}>Vpišite matično številko. Sistem pridobi podatke, preveri de minimis stanje in predlaga razpise, ki ustrezajo vašemu podjetju.</p>
         <div style={{display:"flex",flexDirection:isMobile?"column":"row",gap:12,justifyContent:"center"}}>
           <button onClick={onStart} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,padding:"16px 36px",borderRadius:14,border:"none",background:c.olive,color:c.white,fontSize:16,fontWeight:700,cursor:"pointer",fontFamily:f,boxShadow:`0 4px 24px ${c.olive}35`}}>Preveri razpise <ArrowRight size={20}/></button>
@@ -76,7 +79,7 @@ function Landing({go,onStart}){
       {/* Before/After teaser */}
       <section style={{...sec,padding:isMobile?"36px 16px 56px":"60px 32px 80px"}}>
         <div style={{display:"flex",flexDirection:isMobile?"column":"row",gap:20,maxWidth:800,margin:"0 auto"}}>
-          <div style={{flex:1,background:c.white,border:`1px solid ${c.border}`,borderRadius:16,padding:"28px 24px"}}><div style={{fontSize:11,fontWeight:700,letterSpacing:".04em",color:c.coral,marginBottom:12}}>URADNI RAZPIS</div><div style={{fontSize:13,color:c.t2,lineHeight:1.7,fontStyle:"italic"}}>„Upravičeni stroški so stroški nakupa opredmetenih in neopredmetenih osnovnih sredstev, ki so neposredno povezani z izvajanjem operacije …"</div></div>
+          <div style={{flex:1,background:c.white,border:`1px solid ${c.border}`,borderRadius:16,padding:"28px 24px"}}><div style={{fontSize:11,fontWeight:700,letterSpacing:".04em",color:c.coral,marginBottom:12}}>URADNI RAZPIS</div><div style={{fontSize:15,color:c.t2,lineHeight:1.7,fontStyle:"italic",fontFamily:fSerif}}>„Upravičeni stroški so stroški nakupa opredmetenih in neopredmetenih osnovnih sredstev, ki so neposredno povezani z izvajanjem operacije …"</div></div>
           <div style={{display:"flex",alignItems:"center",justifyContent:"center",transform:isMobile?"rotate(90deg)":"none"}}><ArrowRight size={24} color={c.olive}/></div>
           <div style={{flex:1,background:c.white,border:`1px solid ${c.olive}30`,borderLeft:`4px solid ${c.olive}`,borderRadius:16,padding:"28px 24px"}}><div style={{fontSize:11,fontWeight:700,letterSpacing:".04em",color:c.olive,marginBottom:12}}>AI PREVOD</div><div style={{fontSize:14,color:c.t1,lineHeight:1.7}}>Kupite lahko novo opremo ali programsko opremo za digitalizacijo. Sistem pokrije stroške do 75.000 €. Pogoj: oprema mora biti nova.</div></div>
         </div>
@@ -86,7 +89,7 @@ function Landing({go,onStart}){
       {/* Pricing teaser */}
       <section style={{background:c.white,padding:"80px 0"}}>
         <div style={sec}>
-          <h2 style={{fontSize:34,fontWeight:700,textAlign:"center",color:c.t1,marginBottom:12}}>Od 0 € naprej</h2>
+          <h2 style={{fontSize:34,fontWeight:600,textAlign:"center",color:c.t1,marginBottom:12,fontFamily:fSerif}}>Od 0 € naprej</h2>
           <p style={{textAlign:"center",fontSize:15,color:c.t2,marginBottom:32}}>Brezplačni paket za pregled. Plačljivi paketi za polno AI izkušnjo.</p>
           <div style={{display:"flex",flexDirection:isMobile?"column":"row",justifyContent:"center",gap:24}}>
             {[["Brezplačno","0 €","Pregled razpisov"],["Osnovno","19 €/mes","AI matching"],["Profesionalno","49 €/mes","Polna AI izkušnja"],["Svetovalci","99 €/mes","Več podjetij"]].map(([n,p,d])=>(
@@ -99,7 +102,7 @@ function Landing({go,onStart}){
 
       {/* Bottom CTA */}
       <section style={{...sec,padding:isMobile?"56px 16px":"80px 32px",textAlign:"center"}}>
-        <h2 style={{fontSize:30,fontWeight:700,color:c.t1,marginBottom:12}}>Pripravljeni?</h2>
+        <h2 style={{fontSize:30,fontWeight:600,color:c.t1,marginBottom:12,fontFamily:fSerif}}>Pripravljeni?</h2>
         <p style={{fontSize:16,color:c.t2,marginBottom:32}}>Vpišite matično številko in v 2 minutah vidite, kaj je na voljo.</p>
         <button onClick={onStart} style={{display:"inline-flex",alignItems:"center",gap:10,padding:"16px 36px",borderRadius:14,border:"none",background:c.graphite,color:c.white,fontSize:16,fontWeight:700,cursor:"pointer",fontFamily:f}}>Začni brezplačno <ArrowRight size={20}/></button>
       </section>
@@ -198,7 +201,7 @@ function HowItWorks({go,onStart}){
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           {[
             {n:"SKD dejavnost",d:"Vaše registrirane dejavnosti ↔ upravičene SKD kode razpisa. Primerja glavno in vse registrirane.",Icon:Layers,w:"35%"},
-            {n:"KMU status",d:"Mikro, malo ali srednje podjetje po EU definiciji. Binaren filter — večina razpisov zahteva KMU.",Icon:Building2,w:"25%"},
+            {n:"KMU status",d:"Mikro, malo ali srednje podjetje po EU definiciji. Binaren filter: večina razpisov zahteva KMU.",Icon:Building2,w:"25%"},
             {n:"Regija",d:"Vzhodna ali Zahodna Slovenija (NUTS-2). Nekateri razpisi so regionalno omejeni ali dajejo prednost kohezijski regiji.",Icon:MapPin,w:"15%"},
             {n:"De minimis prostor",d:"Preostali prostor do 300.000 €. Če razpis presega vaš prostor, to vpliva na score.",Icon:Shield,w:"15%"},
             {n:"Strateški interesi",d:"Vaši izbrani cilji ↔ namen razpisa. Digitalizacija, izvoz, zeleni prehod, R&D.",Icon:Sparkles,w:"10%"},
@@ -267,7 +270,7 @@ function Pricing({go,onStart}){
   const faqs=[
     ["Ali je res brezplačno?","Da. Brezplačni paket omogoča pregled vseh razpisov in osnovne filtre brez omejitev. Ni časovne omejitve. Brez kreditne kartice."],
     ["Kaj je vključeno v 14-dnevni preizkus?","Polni dostop do izbranega paketa. Preizkus se ne podaljša avtomatsko. Pred iztekom vas obvestimo."],
-    ["Kako deluje de minimis sledenje?","Sistem pridobi podatke iz JODP registra Ministrstva za finance na podlagi matične številke. Podatki so informativni — priporočamo potrditev z lastno evidenco."],
+    ["Kako deluje de minimis sledenje?","Sistem pridobi podatke iz JODP registra Ministrstva za finance na podlagi matične številke. Podatki so informativni, priporočamo potrditev z lastno evidenco."],
     ["Ali lahko zamenjam paket?","Kadarkoli. Nadgradnja je takojšnja, pri znižanju velja do konca tekočega obdobja."],
     ["Kakšno plačevanje sprejemate?","Kartično plačilo (Visa, Mastercard) in SEPA direktna obremenitev. Račun prejmete po e-pošti."],
     ["Ali lahko prekličem kadarkoli?","Da. Brez vezave, brez penala. Dostop velja do konca plačanega obdobja."],
@@ -571,7 +574,7 @@ function effectiveGrantStatus(row){
 function scoreGrant(row,profile){
   const tags=row.eligible_sectors||[];
   const sizes=row.eligible_company_sizes||[];
-  // Razširi iskalno besedilo na summary in zahteve — tam je največ eligibility info
+  // Razširi iskalno besedilo na summary in zahteve: tam je največ eligibility info
   const hay=[...tags,row.title||"",row.raw_summary||"",row.requirements||"",row.plain_language_summary||""].join(" ").toLowerCase();
   let s=50;
   if(profile){
@@ -736,7 +739,7 @@ function Dashboard({maticna,profile}){
         return;
       }
     }
-    // Fallback: grant_matches še ni na voljo (nov profil, edge function ni uspela, ali brez company_id) — izračunaj lokalno
+    // Fallback: grant_matches še ni na voljo (nov profil, edge function ni uspela, ali brez company_id), izračunaj lokalno
     const{data}=await sb.from("grants").select("*").in("status",["open","upcoming"]).or(`deadline_at.is.null,deadline_at.gte.${today}`).order("deadline_at",{ascending:true,nullsFirst:false}).limit(80);
     if(!active)return;
     const verified=(data||[]).filter(row=>/^https?:\/\//i.test(String(row.source_url||"")));

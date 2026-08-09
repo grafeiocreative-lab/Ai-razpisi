@@ -367,7 +367,7 @@ function parseSpsPosts(jsonText: string, sourcePageUrl: string): Record<string, 
 }
 
 function parseEssPrograms(html: string, sourcePageUrl: string): Record<string, unknown>[] {
-  // ESS stran lista zaposlovalnih spodbud — vsaka spodbuda je en razpis brez roka
+  // ESS stran lista zaposlovalnih spodbud, vsaka spodbuda je en razpis brez roka
   const ESS_PROGRAMS = [
     { title: "Subvencija za zaposlitev 2026", summary: "Subvencija delodajalcem za zaposlitev brezposelnih oseb, ki so prijavljene v evidenci brezposelnih. Spodbuda pokriva del stroškov plače.", sectors: ["Zaposlovanje"] },
     { title: "Trajno zaposlovanje mladih 2026", summary: "Subvencija za trajno zaposlitev mladih do 29 let, prijavljenih na ZRSZ. Delodajalec prejme subvencijo za kritje dela stroškov zaposlitve.", sectors: ["Zaposlovanje"] },
@@ -410,7 +410,7 @@ function parseEssPrograms(html: string, sourcePageUrl: string): Record<string, u
 }
 
 function parseArisGrants(html: string, sourcePageUrl: string, defaultStatus: string): Record<string, unknown>[] {
-  // ARIS (nekdanji ARRS, preselil na aris-rs.si avgust 2026) — moderna stran,
+  // ARIS (nekdanji ARRS, preselil na aris-rs.si avgust 2026): moderna stran,
   // UTF-8, vsak razpis je <div class="razpis-card razpis-card--kartica">.
   // Odprti razpisi imajo "Rok:" in "Razpisana vrednost:", načrtovani samo "Datum objave:".
   const grants: Record<string, unknown>[] = [];

@@ -17,10 +17,10 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    // Odstrani vse, kar ni številka (presledki, vezaji, "SI" predpona pri ID za DDV ...)
-    // — frontend to že počisti, tu je obramba v globino za klicatelje mimo frontenda.
+    // Odstrani vse, kar ni številka (presledki, vezaji, "SI" predpona pri ID za DDV ...):
+    // frontend to že počisti, tu je obramba v globino za klicatelje mimo frontenda.
     const registrationNumber = String(body.registration_number || "").replace(/\D/g, "");
-    // Profil podjetja — shrani se v companies za personaliziran matching
+    // Profil podjetja, shrani se v companies za personaliziran matching
     const interests: string[] = Array.isArray(body.interests) ? body.interests : [];
     const kmu: string = body.kmu || "";
     const dmFree: number = typeof body.dm_free === "number" ? body.dm_free : 200000;
@@ -178,7 +178,7 @@ Deno.serve(async (req) => {
       return json({ error: dbError.message }, 500);
     }
 
-    // Sproži matching v ozadju — ne čakamo na odgovor
+    // Sproži matching v ozadju, ne čakamo na odgovor
     const companyId = (company as Record<string, unknown>)?.id;
     if (companyId) {
       const matchUrl = (supabaseUrl || "").replace(/\/$/, "") + "/functions/v1/compute-matches";

@@ -109,8 +109,8 @@ Deno.serve(async (req) => {
     if (req.method !== "POST") return json({ ok: false, error: "POST only" }, 405);
 
     const body = await safeJson(req);
-    // Odstrani vse, kar ni številka (presledki, vezaji, "SI" predpona pri ID za DDV ...)
-    // — frontend to že počisti, tu je obramba v globino za klicatelje mimo frontenda.
+    // Odstrani vse, kar ni številka (presledki, vezaji, "SI" predpona pri ID za DDV ...):
+    // frontend to že počisti, tu je obramba v globino za klicatelje mimo frontenda.
     const maticna = String(body.registration_number || body.maticna || "").replace(/\D/g, "");
     const debug = Boolean(body.debug);
 
@@ -171,7 +171,7 @@ Deno.serve(async (req) => {
               }
             }
           }
-        } catch { /* VIES ni dosegljiv — preskočimo */ }
+        } catch { /* VIES ni dosegljiv, preskočimo */ }
       }
 
       if (resolvedMaticna === maticna) {
