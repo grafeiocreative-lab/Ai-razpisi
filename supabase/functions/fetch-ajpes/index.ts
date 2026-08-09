@@ -17,7 +17,9 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const registrationNumber = String(body.registration_number || "").trim();
+    // Odstrani vse, kar ni številka (presledki, vezaji, "SI" predpona pri ID za DDV ...)
+    // — frontend to že počisti, tu je obramba v globino za klicatelje mimo frontenda.
+    const registrationNumber = String(body.registration_number || "").replace(/\D/g, "");
     // Profil podjetja — shrani se v companies za personaliziran matching
     const interests: string[] = Array.isArray(body.interests) ? body.interests : [];
     const kmu: string = body.kmu || "";

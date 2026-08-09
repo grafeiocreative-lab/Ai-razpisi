@@ -109,7 +109,9 @@ Deno.serve(async (req) => {
     if (req.method !== "POST") return json({ ok: false, error: "POST only" }, 405);
 
     const body = await safeJson(req);
-    const maticna = String(body.registration_number || body.maticna || "").trim();
+    // Odstrani vse, kar ni številka (presledki, vezaji, "SI" predpona pri ID za DDV ...)
+    // — frontend to že počisti, tu je obramba v globino za klicatelje mimo frontenda.
+    const maticna = String(body.registration_number || body.maticna || "").replace(/\D/g, "");
     const debug = Boolean(body.debug);
 
     if (!maticna) return json({ ok: false, error: "Manjka registration_number" }, 400);
