@@ -145,7 +145,7 @@ Deno.serve(async (req) => {
     const { data: existingCompany } = await supabase
       .from("companies")
       .select("id")
-      .eq("registration_number", registrationNumber)
+      .eq("registration_number", resolvedRegistration)
       .maybeSingle();
 
     let company;
