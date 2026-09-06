@@ -58,7 +58,7 @@ function Nav({page,go,onStart,overlay=false}){
         {[["kako","Kako deluje"],["cenik","Cenik"]].map(([k,l])=>(
           <a key={k} onClick={()=>go(k)} style={{display:isMobile&&k==="kako"?"none":"inline",fontSize:14,color:page===k?c.olive:linkColor,fontWeight:page===k?600:500,cursor:"pointer",textDecoration:"none",borderBottom:page===k?`2px solid ${c.olive}`:"2px solid transparent",paddingBottom:2,transition:"color .3s ease"}}>{l}</a>
         ))}
-        <button onClick={onStart} style={{padding:isMobile?"10px 14px":"10px 24px",borderRadius:10,border:"none",background:solid?c.graphite:c.olive,color:c.white,fontSize:isMobile?13:14,fontWeight:600,cursor:"pointer",fontFamily:f,whiteSpace:"nowrap",transition:"background .3s ease"}}>{isMobile?"Začni":"Začni brezplačno"}</button>
+        <button onClick={onStart} style={{padding:isMobile?"8px 14px":"9px 22px",borderRadius:10,border:"none",background:solid?c.graphite:"rgba(127,150,86,0.82)",color:c.white,fontSize:isMobile?13:14,fontWeight:600,cursor:"pointer",fontFamily:f,whiteSpace:"nowrap",transition:"background .3s ease"}}>{isMobile?"Začni":"Začni brezplačno"}</button>
       </div>
     </nav>
   );
@@ -69,7 +69,10 @@ function Footer(){
   return(
     <footer style={{borderTop:`1px solid ${c.border}`,padding:isMobile?"24px 16px":"32px 40px",display:"flex",flexDirection:isMobile?"column":"row",gap:10,justifyContent:"space-between",alignItems:"center",fontFamily:f}}>
       <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:28,height:28,borderRadius:8,background:c.olive,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:10,color:c.white}}>AI</div><span style={{fontSize:14,fontWeight:600,color:c.t1}}>RAZPISI</span></div>
-      <span style={{fontSize:12,color:c.t3}}>© 2026 AI Razpisi · Slovenija</span>
+      <div style={{display:"flex",flexDirection:isMobile?"column":"row",alignItems:"center",gap:isMobile?6:20}}>
+        <a href="mailto:grafeio.creative@gmail.com" style={{fontSize:12,color:c.t2,textDecoration:"none"}}>grafeio.creative@gmail.com</a>
+        <span style={{fontSize:12,color:c.t3}}>© 2026 AI Razpisi · Slovenija</span>
+      </div>
     </footer>
   );
 }
@@ -94,18 +97,18 @@ function HeroVideo({go,onStart,grantCount}){
       {/* Subtilen gradient samo čez levo stran (kjer je tekst) — desna polovica (zemljevid) ostane vidna */}
       <div style={{position:"absolute",inset:0,background:isMobile
         ?"linear-gradient(180deg, rgba(20,22,18,0.66) 0%, rgba(20,22,18,0.52) 42%, rgba(20,22,18,0.30) 100%)"
-        :"linear-gradient(90deg, rgba(20,22,18,0.58) 0%, rgba(20,22,18,0.34) 36%, rgba(20,22,18,0.12) 58%, rgba(20,22,18,0) 76%)"
+        :"linear-gradient(90deg, rgba(24,24,19,0.64) 0%, rgba(24,24,19,0.43) 40%, rgba(24,24,19,0.12) 65%, rgba(24,24,19,0) 100%)"
       }}/>
-      {/* Nežen prehod v naslednjo (svetlo) sekcijo, brez ostrega roba */}
-      <div style={{position:"absolute",left:0,right:0,bottom:0,height:isMobile?70:110,background:`linear-gradient(180deg, rgba(20,22,18,0) 0%, ${c.ivory} 100%)`}}/>
+      {/* Nežen prehod v naslednjo (svetlo) sekcijo, brez ostrega roba — kratek in subtilen, ne "mlečna meglica" */}
+      <div style={{position:"absolute",left:0,right:0,bottom:0,height:isMobile?40:56,background:`linear-gradient(180deg, rgba(20,22,18,0) 0%, ${c.ivory} 100%)`}}/>
 
-      <div style={{position:"relative",zIndex:2,width:"100%",maxWidth:isMobile?"none":580,padding:isMobile?"104px 20px 0":"0 clamp(32px,7vw,110px)"}}>
+      <div style={{position:"relative",zIndex:2,width:"100%",maxWidth:isMobile?"none":680,padding:isMobile?"104px 20px 0":"0 clamp(32px,7vw,110px)"}}>
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:18}}>
           <span style={{width:5,height:5,borderRadius:"50%",background:"#AEC98C"}}/>
           <span style={{fontSize:12,fontWeight:600,letterSpacing:".14em",textTransform:"uppercase",color:"#AEC98C"}}>AI platforma za slovenske razpise</span>
         </div>
-        <h1 style={{fontFamily:fSerif,fontWeight:600,fontSize:isMobile?"clamp(40px,11vw,56px)":"clamp(48px,5vw,76px)",lineHeight:1.1,color:"#F8F6EF",margin:"0 0 20px"}}>Razpisi, ki ustrezajo<br/><span style={{color:c.olive}}>vašemu podjetju.</span></h1>
-        <p style={{fontSize:isMobile?16:18,lineHeight:1.55,color:"#E4E1D6",maxWidth:540,margin:isMobile?"0 0 24px":"0 0 30px"}}>Vpišite matično številko. Sistem preveri podatke podjetja, de minimis prostor in pogoje razpisov ter izpostavi priložnosti, ki so za vas najbolj relevantne.</p>
+        <h1 style={{fontFamily:fSerif,fontWeight:600,fontSize:isMobile?"clamp(40px,11vw,56px)":"clamp(36px,3.6vw,52px)",lineHeight:1.16,color:"#F8F6EF",margin:"0 0 20px"}}>Razpisi, ki ustrezajo<br/><span style={{color:"#C3DBA3"}}>vašemu podjetju.</span></h1>
+        <p style={{fontSize:isMobile?16:18,lineHeight:1.55,color:"#E4E1D6",maxWidth:540,margin:isMobile?"0 0 24px":"0 0 30px"}}>Vpišite matično številko. Sistem preveri vaše podjetje, de minimis prostor in pogoje razpisov ter izpostavi najbolj relevantne priložnosti.</p>
         <div style={{display:"flex",flexWrap:"wrap",gap:14,marginBottom:isMobile?26:30}}>
           <button onClick={onStart} className="hero-cta-primary" style={{display:"inline-flex",alignItems:"center",gap:10,height:56,padding:"0 30px",borderRadius:10,border:"none",background:c.olive,color:"#fff",fontSize:16,fontWeight:600,cursor:"pointer",fontFamily:f}}>Preveri razpise <ArrowRight size={18} className="hero-cta-arrow"/></button>
           <button onClick={()=>go("kako")} className="hero-cta-secondary" style={{display:"inline-flex",alignItems:"center",height:56,padding:"0 26px",borderRadius:10,border:"1.5px solid rgba(247,244,236,0.4)",background:"rgba(247,244,236,0.06)",color:"#F7F4EC",fontSize:16,fontWeight:600,cursor:"pointer",fontFamily:f}}>Kako deluje</button>
@@ -342,7 +345,7 @@ function Pricing({go,onStart}){
 
   const faqs=[
     ["Ali je res brezplačno?","Da. Brezplačni paket omogoča pregled vseh razpisov in osnovne filtre brez omejitev. Ni časovne omejitve. Brez kreditne kartice."],
-    ["Kdaj bodo plačljivi paketi na voljo?","Trenutno še niso odprti za naročilo. Gumb 'Naroči se' zabeleži vaš interes, obvestimo vas takoj, ko bo naročanje mogoče."],
+    ["Kdaj bodo plačljivi paketi na voljo?","Trenutno še niso odprti za naročilo. Gumb 'Naroči se' zabeleži vaš interes. Za zgodnji dostop nam pišite na grafeio.creative@gmail.com."],
     ["Kako deluje de minimis sledenje?","Sistem pridobi podatke iz JODP registra Ministrstva za finance na podlagi matične številke. Podatki so informativni, priporočamo potrditev z lastno evidenco."],
   ];
 
@@ -380,7 +383,7 @@ function Pricing({go,onStart}){
             </div>
           ))}
         </div>
-        <p style={{textAlign:"center",fontSize:13,color:c.t3,marginTop:20}}>Vsi zneski brez DDV. Plačljivi paketi še niso odprti za naročilo — "Naroči se" zabeleži vaš interes.</p>
+        <p style={{textAlign:"center",fontSize:13,color:c.t3,marginTop:20}}>Vsi zneski brez DDV. Plačljivi paketi še niso odprti za naročilo, "Naroči se" zabeleži vaš interes.</p>
       </section>
 
       {/* Comparison table */}
