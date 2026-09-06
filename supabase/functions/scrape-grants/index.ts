@@ -181,6 +181,29 @@ Deno.serve(async (req) => {
   }
 });
 
+// Ista dnevna varovalka kot v ai-assistant, deljena kvota med obema funkcijama
+// prek skupne tabele ai_usage. Nastavljivo prek AI_DAILY_TOKEN_BUDGET secreta.
+const DAILY_TOKEN_BUDGET = Number(Deno.env.get("AI_DAILY_TOKEN_BUDGET")) || 300_000;
+
+async function checkAiBudget(supabase: ReturnType<typeof createClient>): Promise<{ ok: boolean; used: number }> {
+  const today = new Date().toISOString().slice(0, 10);
+  const { data } = await supabase.from("ai_usage").select("input_tokens, output_tokens").eq("usage_date", today).maybeSingle();
+  const used = Number(data?.input_tokens || 0) + Number(data?.output_tokens || 0);
+  return { ok: used < DAILY_TOKEN_BUDGET, used };
+}
+
+async function recordAiUsage(supabase: ReturnType<typeof createClient>, inputTokens: number, outputTokens: number) {
+  const today = new Date().toISOString().slice(0, 10);
+  const { data } = await supabase.from("ai_usage").select("input_tokens, output_tokens, request_count").eq("usage_date", today).maybeSingle();
+  await supabase.from("ai_usage").upsert({
+    usage_date: today,
+    input_tokens: Number(data?.input_tokens || 0) + inputTokens,
+    output_tokens: Number(data?.output_tokens || 0) + outputTokens,
+    request_count: Number(data?.request_count || 0) + 1,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "usage_date" });
+}
+
 // ─── AI povzetki (Claude Sonnet 5) ────────────────────
 // Poišče razpise brez plain_language_summary in za vsakega pokliče Anthropic API.
 // Max 10 na klic funkcije, da ne obtičimo na rate limitu ali predolgem izvajanju.
@@ -190,6 +213,12 @@ async function generateSummaries(
 ): Promise<{ processed: number; errors: string[] }> {
   const errors: string[] = [];
   let processed = 0;
+
+  const budget = await checkAiBudget(supabase);
+  if (!budget.ok) {
+    errors.push("AI povzetki preskočeni: dnevna kvota žetonov je izčrpana");
+    return { processed, errors };
+  }
 
   const { data: grants, error } = await supabase
     .from("grants")
@@ -205,7 +234,7 @@ async function generateSummaries(
 
   for (const grant of grants || []) {
     try {
-      const summary = await summarizeGrant(apiKey, grant);
+      const summary = await summarizeGrant(supabase, apiKey, grant);
       const { error: updateError } = await supabase
         .from("grants")
         .update({ plain_language_summary: summary })
@@ -225,6 +254,7 @@ async function generateSummaries(
 }
 
 async function summarizeGrant(
+  supabase: ReturnType<typeof createClient>,
   apiKey: string,
   grant: { title: string; raw_summary: string | null; requirements: string | null; max_aid_amount: number | null; deadline_at: string | null }
 ): Promise<string> {
@@ -262,6 +292,10 @@ async function summarizeGrant(
   }
 
   const data = await res.json();
+
+  if (data.usage) {
+    await recordAiUsage(supabase, Number(data.usage.input_tokens || 0), Number(data.usage.output_tokens || 0));
+  }
 
   if (data.stop_reason === "refusal") {
     throw new Error("Anthropic API je zavrnil zahtevo (refusal)");

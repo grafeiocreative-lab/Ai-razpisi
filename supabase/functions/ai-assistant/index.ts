@@ -6,6 +6,30 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+// Dnevna varovalka pred stroški API-ja: skupna kvota žetonov, deljena med
+// AI pomočnikom in AI povzetki razpisov (scrape-grants). Nastavljivo prek
+// Supabase secreta AI_DAILY_TOKEN_BUDGET, privzeto 300.000 žetonov/dan.
+const DAILY_TOKEN_BUDGET = Number(Deno.env.get("AI_DAILY_TOKEN_BUDGET")) || 300_000;
+
+async function checkAiBudget(supabase: ReturnType<typeof createClient>): Promise<{ ok: boolean; used: number }> {
+  const today = new Date().toISOString().slice(0, 10);
+  const { data } = await supabase.from("ai_usage").select("input_tokens, output_tokens").eq("usage_date", today).maybeSingle();
+  const used = Number(data?.input_tokens || 0) + Number(data?.output_tokens || 0);
+  return { ok: used < DAILY_TOKEN_BUDGET, used };
+}
+
+async function recordAiUsage(supabase: ReturnType<typeof createClient>, inputTokens: number, outputTokens: number) {
+  const today = new Date().toISOString().slice(0, 10);
+  const { data } = await supabase.from("ai_usage").select("input_tokens, output_tokens, request_count").eq("usage_date", today).maybeSingle();
+  await supabase.from("ai_usage").upsert({
+    usage_date: today,
+    input_tokens: Number(data?.input_tokens || 0) + inputTokens,
+    output_tokens: Number(data?.output_tokens || 0) + outputTokens,
+    request_count: Number(data?.request_count || 0) + 1,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "usage_date" });
+}
+
 // AI pomočnik: samo pogovor o razpisih/profilu podjetja (brez tool use, ne spreminja baze).
 // Kontekst (profil + do 15 najbolje ujemajočih razpisov) se pošlje ob vsakem klicu —
 // brez shranjene seje na strežniku, zgodovino pogovora pošilja frontend.
@@ -34,6 +58,11 @@ Deno.serve(async (req) => {
     if (message.length > 2000) return json({ error: "Sporočilo je predolgo (max 2000 znakov)" }, 400);
 
     const supabase = createClient(supabaseUrl, serviceRoleKey, { db: { schema: "ai_razpisi" } });
+
+    const budget = await checkAiBudget(supabase);
+    if (!budget.ok) {
+      return json({ reply: "AI pomočnik je danes dosegel dnevno omejitev uporabe. Poskusite znova jutri." });
+    }
 
     // Profil podjetja (za kontekst, ne za spreminjanje)
     let company: Record<string, unknown> | null = null;
@@ -118,6 +147,10 @@ ${grantsContext || "Trenutno ni podatkov o razpisih."}`;
     }
 
     const data = await res.json();
+
+    if (data.usage) {
+      await recordAiUsage(supabase, Number(data.usage.input_tokens || 0), Number(data.usage.output_tokens || 0));
+    }
 
     if (data.stop_reason === "refusal") {
       return json({ reply: "Na to vprašanje ne morem odgovoriti. Poskusi ga preoblikovati ali vprašaj kaj drugega o razpisih." });
