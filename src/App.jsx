@@ -158,7 +158,7 @@ function HeroVideo({go,onStart,grantCount}){
   const videoBase=isMobile?"/hero/hero-mobile":"/hero/hero-desktop-v3";
   const posterSrc=isMobile?"/hero/hero-mobile-poster.jpg":"/hero/hero-poster.jpg";
   return(
-    <section className={isMobile?"hero-mobile-section":undefined} style={{position:"relative",width:"100%",minHeight:isMobile?undefined:760,height:isMobile?undefined:"88vh",overflow:"hidden",display:"flex",alignItems:isMobile?"flex-start":"center"}}>
+    <section className="hero-fullscreen-section" style={{position:"relative",width:"100%",overflow:"hidden",display:"flex",alignItems:isMobile?"flex-start":"center"}}>
       {reducedMotion?(
         <img src={posterSrc} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:"50% center"}}/>
       ):(
@@ -172,8 +172,9 @@ function HeroVideo({go,onStart,grantCount}){
         ?"linear-gradient(180deg, rgba(20,22,18,0.68) 0%, rgba(20,22,18,0.50) 30%, rgba(20,22,18,0.38) 45%, rgba(20,22,18,0.16) 70%, rgba(20,22,18,0.05) 100%)"
         :"linear-gradient(90deg, rgba(24,24,19,0.64) 0%, rgba(24,24,19,0.43) 40%, rgba(24,24,19,0.12) 65%, rgba(24,24,19,0) 100%)"
       }}/>
-      {/* Nežen prehod v naslednjo (svetlo) sekcijo, brez ostrega roba — kratek in subtilen, ne "mlečna meglica" */}
-      <div style={{position:"absolute",left:0,right:0,bottom:0,height:isMobile?40:56,background:`linear-gradient(180deg, rgba(20,22,18,0) 0%, ${c.ivory} 100%)`}}/>
+      {/* Zelo kratek, pozno-nastopajoč prehod v naslednjo sekcijo — brez blura, samo opacity/barva,
+          skoraj neopazen (fotografija ostane čista skoraj do roba). */}
+      <div style={{position:"absolute",left:0,right:0,bottom:0,height:isMobile?32:36,background:`linear-gradient(180deg, transparent 0%, transparent 55%, ${c.ivory} 100%)`}}/>
 
       <div style={{position:"relative",zIndex:2,width:"100%",maxWidth:isMobile?"none":680,padding:isMobile?"calc(72px + env(safe-area-inset-top,0px)) 22px calc(28px + env(safe-area-inset-bottom,0px))":"0 clamp(32px,7vw,110px)"}}>
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:18}}>
@@ -196,7 +197,7 @@ function HeroVideo({go,onStart,grantCount}){
         </div>
       </div>
       <style>{`
-        .hero-mobile-section{min-height:760px;min-height:100vh;min-height:100svh;}
+        .hero-fullscreen-section{min-height:640px;min-height:100vh;min-height:100svh;min-height:100dvh;}
         .hero-cta-primary{transition:background .2s ease;}
         .hero-cta-primary:hover{background:#8FA968;}
         .hero-cta-primary:hover .hero-cta-arrow{transform:translateX(3px);}
@@ -221,8 +222,9 @@ function Landing({go,onStart}){
       <Nav page="landing" go={go} onStart={onStart} overlay/>
       <HeroVideo go={go} onStart={onStart} grantCount={grantCount}/>
 
-      {/* Uradni vir → AI razlaga: podpisni element aplikacije, tudi na vstopni strani */}
-      <section style={{...sec,padding:isMobile?"36px 16px 56px":"60px 32px 80px"}}>
+      {/* Uradni vir → AI razlaga: podpisni element aplikacije, tudi na vstopni strani.
+          Majhen top padding namenoma — naj deluje kot neposredno nadaljevanje herojske fotografije. */}
+      <section style={{...sec,padding:isMobile?"56px 16px 56px":"72px 32px 80px"}}>
         <div style={{maxWidth:620,margin:"0 auto"}}>
           <DocumentTransition
             quoteSource="Uradni vir"
