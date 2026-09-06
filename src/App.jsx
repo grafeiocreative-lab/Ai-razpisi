@@ -172,10 +172,6 @@ function HeroVideo({go,onStart,grantCount}){
         ?"linear-gradient(180deg, rgba(20,22,18,0.68) 0%, rgba(20,22,18,0.50) 30%, rgba(20,22,18,0.38) 45%, rgba(20,22,18,0.16) 70%, rgba(20,22,18,0.05) 100%)"
         :"linear-gradient(90deg, rgba(24,24,19,0.64) 0%, rgba(24,24,19,0.43) 40%, rgba(24,24,19,0.12) 65%, rgba(24,24,19,0) 100%)"
       }}/>
-      {/* Zelo kratek, pozno-nastopajoč prehod v naslednjo sekcijo — brez blura, samo opacity/barva,
-          skoraj neopazen (fotografija ostane čista skoraj do roba). */}
-      <div style={{position:"absolute",left:0,right:0,bottom:0,height:isMobile?32:36,background:`linear-gradient(180deg, transparent 0%, transparent 55%, ${c.ivory} 100%)`}}/>
-
       <div style={{position:"relative",zIndex:2,width:"100%",maxWidth:isMobile?"none":680,padding:isMobile?"calc(72px + env(safe-area-inset-top,0px)) 22px calc(28px + env(safe-area-inset-bottom,0px))":"0 clamp(32px,7vw,110px)"}}>
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:18}}>
           <span style={{width:5,height:5,borderRadius:"50%",background:"#AEC98C",flexShrink:0}}/>
