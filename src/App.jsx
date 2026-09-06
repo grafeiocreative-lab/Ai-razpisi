@@ -155,7 +155,7 @@ function HeroVideo({go,onStart,grantCount}){
   const reducedMotion=usePrefersReducedMotion();
   const trustItems=[grantCount!==null?`${grantCount} razpisov`:"Aktualni razpisi","AI ujemanje","Pod 2 min do pregleda"];
   // Mobile dobi namenski navpičen video (drug kader/crop), ne stisnjen desktop posnetek
-  const videoBase=isMobile?"/hero/hero-mobile":"/hero/hero-loop";
+  const videoBase=isMobile?"/hero/hero-mobile":"/hero/hero-desktop-v2";
   const posterSrc=isMobile?"/hero/hero-mobile-poster.jpg":"/hero/hero-poster.jpg";
   return(
     <section className={isMobile?"hero-mobile-section":undefined} style={{position:"relative",width:"100%",minHeight:isMobile?undefined:760,height:isMobile?undefined:"88vh",overflow:"hidden",display:"flex",alignItems:isMobile?"flex-start":"center"}}>
@@ -265,7 +265,7 @@ function Landing({go,onStart}){
 function HowItWorks({go,onStart}){
   const isMobile=useIsMobile();
   const sec={maxWidth:900,margin:"0 auto",padding:isMobile?"0 16px":"0 32px"};
-  const card={background:c.white,border:`1px solid ${c.border}`,borderRadius:16,padding:isMobile?"22px 18px":"28px 26px",marginBottom:16};
+  const card={background:c.white,border:`1px solid ${c.border}`,borderRadius:radius.lg,padding:isMobile?"22px 18px":"28px 26px",marginBottom:16};
   return(
     <div style={{fontFamily:f,color:c.t1,background:c.ivory}}>
       <Nav page="kako" go={go} onStart={onStart}/>
@@ -291,9 +291,9 @@ function HowItWorks({go,onStart}){
             detail:[
               {src:"Avtomatsko iz registra",what:"Firma, naslov, regija in pravna oblika se prenesejo neposredno iz registra",Icon:FileSearch},
               {src:"KMU klasifikacija",what:"Vpišete število zaposlenih, letni prihodek in bilančno vsoto. Sistem izračuna, ali ste mikro, malo ali srednje podjetje.",Icon:BarChart3},
-              {src:"Strateški interesi",what:"Izberete področja, ki so pomembna za vaše podjetje: digitalizacija, izvoz, zeleni prehod, razvoj in raziskave …",Icon:Sparkles},
+              {src:"Strateški interesi",what:"Izberete področja, ki so pomembna za vaše podjetje: digitalizacija, izvoz, zeleni prehod, razvoj in raziskave …",Icon:Layers},
             ]},
-          {num:"03",title:"Prejmite priložnosti",Icon:Sparkles,color:"c-green",
+          {num:"03",title:"Prejmite priložnosti",Icon:TrendingUp,color:"c-green",
             desc:"Vaš profil primerjamo z vsemi odprtimi razpisi. V nekaj sekundah vidite, kateri vam ustrezajo in koliko.",
             detail:[
               {src:"Strateški interesi",what:"Vaši izbrani cilji (digitalizacija, izvoz, zeleni prehod …) se primerjajo z namenom razpisa.",Icon:Layers},
@@ -301,19 +301,17 @@ function HowItWorks({go,onStart}){
               {src:"AI razlaga",what:"Uradno besedilo razpisa prevedemo v razumljiv jezik, brez pravniškega žargona.",Icon:MessageSquare},
             ]},
         ].map((step,si)=>(
-          <div key={step.num} style={{...card,padding:isMobile?"24px 18px":"36px 32px",marginBottom:24}}>
-            <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:20}}>
-              <div style={{width:48,height:48,borderRadius:14,background:c.oliveMed,display:"flex",alignItems:"center",justifyContent:"center"}}><step.Icon size={22} color={c.olive} strokeWidth={2}/></div>
-              <div>
-                <div style={{fontSize:13,fontWeight:700,color:c.olive,marginBottom:2}}>{step.num}</div>
-                <h2 style={{fontSize:22,fontWeight:700,color:c.t1}}>{step.title}</h2>
-              </div>
+          <div key={step.num} style={{...card,padding:isMobile?"24px 18px":"32px 30px",marginBottom:20}}>
+            <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:18,paddingBottom:14,borderBottom:`1px solid ${c.border}`}}>
+              <span style={{fontSize:13,fontWeight:700,color:c.olive,...tnum}}>{step.num}</span>
+              <step.Icon size={19} color={c.olive} strokeWidth={1.75}/>
+              <h2 style={{fontSize:19,fontWeight:700,color:c.t1}}>{step.title}</h2>
             </div>
-            <p style={{fontSize:15,color:c.t2,lineHeight:1.6,marginBottom:20,maxWidth:640}}>{step.desc}</p>
-            <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <p style={{fontSize:15,color:c.t2,lineHeight:1.6,marginBottom:18,maxWidth:640}}>{step.desc}</p>
+            <div style={{display:"flex",flexDirection:"column"}}>
               {step.detail.map(d=>(
-                <div key={d.src} style={{display:"flex",alignItems:"flex-start",gap:14,padding:"16px 18px",borderRadius:12,background:c.ivory,border:`1px solid ${c.border}50`}}>
-                  <div style={{width:36,height:36,borderRadius:10,background:c.white,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:`1px solid ${c.border}`}}><d.Icon size={16} color={c.olive} strokeWidth={1.75}/></div>
+                <div key={d.src} style={{display:"flex",alignItems:"flex-start",gap:12,padding:"12px 0",borderTop:`1px solid ${c.border}30`}}>
+                  <d.Icon size={16} color={c.t3} strokeWidth={1.75} style={{flexShrink:0,marginTop:2}}/>
                   <div><div style={{fontSize:13,fontWeight:600,color:c.t1,marginBottom:3}}>{d.src}</div><div style={{fontSize:13,color:c.t2,lineHeight:1.5}}>{d.what}</div></div>
                 </div>
               ))}
@@ -327,14 +325,14 @@ function HowItWorks({go,onStart}){
         <div style={sec}>
           <h2 style={{fontSize:28,fontWeight:700,color:c.t1,marginBottom:8}}>De minimis sledenje</h2>
           <p style={{fontSize:15,color:c.t2,lineHeight:1.6,marginBottom:32,maxWidth:640}}>Platforma avtomatsko pridobi podatke o prejetih državnih pomočeh iz JODP registra Ministrstva za finance. Na podlagi matične številke vidite celotno zgodovino in preostali prostor do zakonske meje.</p>
-          <div style={{display:"flex",flexDirection:isMobile?"column":"row",gap:16}}>
+          <div style={{display:"flex",flexDirection:isMobile?"column":"row",gap:isMobile?20:32}}>
             {[
-              {n:"300.000 €",d:"Nova meja de minimis pomoči po Uredbi EU 2023/2831, veljavna od 1. 1. 2024.",color:c.olive},
-              {n:"3 leta",d:"Referenčno obdobje. Seštejejo se pomoči v tekočem in dveh predhodnih fiskalnih letih.",color:c.amber},
-              {n:"Od 1. 1. 2026",d:"EU zahteva javno dostopen centralni register. Slovenija vzpostavlja strojno berljiv vir.",color:c.signal},
+              {n:"300.000 €",d:"Nova meja de minimis pomoči po Uredbi EU 2023/2831, veljavna od 1. 1. 2024."},
+              {n:"3 leta",d:"Referenčno obdobje. Seštejejo se pomoči v tekočem in dveh predhodnih fiskalnih letih."},
+              {n:"Od 1. 1. 2026",d:"EU zahteva javno dostopen centralni register. Slovenija vzpostavlja strojno berljiv vir."},
             ].map(b=>(
-              <div key={b.n} style={{flex:1,padding:"24px 22px",borderRadius:14,border:`1px solid ${c.border}`,background:c.ivory}}>
-                <div style={{fontSize:28,fontWeight:800,color:b.color,marginBottom:8}}>{b.n}</div>
+              <div key={b.n} style={{flex:1,paddingTop:14,borderTop:`2px solid ${c.olive}`}}>
+                <div style={{fontSize:26,fontWeight:800,color:c.t1,marginBottom:8,...tnum}}>{b.n}</div>
                 <div style={{fontSize:13,color:c.t2,lineHeight:1.5}}>{b.d}</div>
               </div>
             ))}
@@ -346,15 +344,15 @@ function HowItWorks({go,onStart}){
       <section style={{...sec,padding:isMobile?"48px 16px":"64px 32px"}}>
         <h2 style={{fontSize:28,fontWeight:700,color:c.t1,marginBottom:8}}>4 merila ujemanja</h2>
         <p style={{fontSize:15,color:c.t2,lineHeight:1.6,marginBottom:32,maxWidth:640}}>Vsak razpis primerjamo z vašim profilom po štirih merilih. Rezultat je odstotek ujemanja in seznam pogojev, ki pove, kje ustrezate in kje ne.</p>
-        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        <div style={{borderTop:`1px solid ${c.border}`}}>
           {[
-            {n:"Strateški interesi",d:"Vaši izbrani cilji (digitalizacija, izvoz, zeleni prehod, razvoj …) se primerjajo z namenom razpisa.",Icon:Sparkles},
+            {n:"Strateški interesi",d:"Vaši izbrani cilji (digitalizacija, izvoz, zeleni prehod, razvoj …) se primerjajo z namenom razpisa.",Icon:Layers},
             {n:"Velikost podjetja (KMU)",d:"Mikro, malo ali srednje podjetje po EU definiciji. Večina razpisov je namenjenih samo KMU.",Icon:Building2},
             {n:"Regija",d:"Vzhodna ali Zahodna Slovenija. Nekateri razpisi so omejeni na eno od regij.",Icon:MapPin},
             {n:"De minimis prostor",d:"Preostali prostor do 300.000 €. Če razpis presega vaš prostor, se to pozna pri ujemanju.",Icon:Shield},
           ].map(a=>(
-            <div key={a.n} style={{display:"flex",alignItems:isMobile?"flex-start":"center",gap:16,padding:"18px 20px",borderRadius:14,background:c.white,border:`1px solid ${c.border}`}}>
-              <div style={{width:40,height:40,borderRadius:10,background:c.oliveMed,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><a.Icon size={18} color={c.olive} strokeWidth={1.75}/></div>
+            <div key={a.n} style={{display:"flex",alignItems:isMobile?"flex-start":"center",gap:14,padding:"16px 2px",borderBottom:`1px solid ${c.border}`}}>
+              <a.Icon size={18} color={c.olive} strokeWidth={1.75} style={{flexShrink:0,marginTop:isMobile?2:0}}/>
               <div style={{flex:1}}><div style={{fontSize:14,fontWeight:600,color:c.t1,marginBottom:2}}>{a.n}</div><div style={{fontSize:13,color:c.t2,lineHeight:1.45}}>{a.d}</div></div>
             </div>
           ))}
@@ -363,7 +361,7 @@ function HowItWorks({go,onStart}){
 
       {/* CTA */}
       <section style={{...sec,padding:"48px 32px 80px",textAlign:"center"}}>
-        <button onClick={onStart} style={{display:"inline-flex",alignItems:"center",gap:10,padding:"16px 36px",borderRadius:14,border:"none",background:c.graphite,color:c.white,fontSize:16,fontWeight:700,cursor:"pointer",fontFamily:f}}>Začni brezplačno <ArrowRight size={20}/></button>
+        <button onClick={onStart} style={{display:"inline-flex",alignItems:"center",gap:10,padding:"16px 36px",borderRadius:radius.md,border:"none",background:c.graphite,color:c.white,fontSize:16,fontWeight:700,cursor:"pointer",fontFamily:f}}>Začni brezplačno <ArrowRight size={20}/></button>
         <div style={{marginTop:12}}><a onClick={()=>go("cenik")} style={{fontSize:14,fontWeight:600,color:c.olive,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>Poglej cenik <ArrowRight size={16}/></a></div>
       </section>
       <Footer/>
@@ -440,11 +438,11 @@ function Pricing({go,onStart}){
       <section style={{...sec,padding:isMobile?"32px 16px 48px":"40px 32px 56px"}}>
         <div style={{display:"flex",flexDirection:isMobile?"column":"row",gap:20,alignItems:"stretch"}}>
           {plans.map(p=>(
-            <div key={p.name} style={{flex:1,borderRadius:18,border:`${p.hl?"2px":"1px"} solid ${p.hl?c.olive:c.border}`,background:p.hl?c.oliveLight:c.white,padding:"32px 26px",display:"flex",flexDirection:"column",position:"relative"}}>
-              {p.hl&&<div style={{position:"absolute",top:-12,left:"50%",transform:"translateX(-50%)",background:c.olive,color:c.white,fontSize:11,fontWeight:700,padding:"4px 16px",borderRadius:6}}>PRIPOROČAMO</div>}
+            <div key={p.name} style={{flex:1,borderRadius:radius.lg,border:`${p.hl?"2px":"1px"} solid ${p.hl?c.olive:c.border}`,background:p.hl?c.oliveLight:c.white,padding:"32px 26px",display:"flex",flexDirection:"column",position:"relative"}}>
+              {p.hl&&<div style={{position:"absolute",top:-12,left:"50%",transform:"translateX(-50%)",background:c.olive,color:c.white,fontSize:11,fontWeight:700,padding:"4px 16px",borderRadius:radius.xs}}>PRIPOROČAMO</div>}
               <div style={{fontSize:13,fontWeight:700,color:p.hl?c.olive:c.t2,marginBottom:8}}>{p.name}</div>
               <div style={{display:"flex",alignItems:"baseline",gap:4,marginBottom:4}}>
-                <span style={{fontSize:42,fontWeight:800,color:c.t1,lineHeight:1}}>{p.price}</span>
+                <span style={{fontSize:42,fontWeight:800,color:c.t1,lineHeight:1,...tnum}}>{p.price}</span>
                 <span style={{fontSize:15,color:c.t2}}>€ {p.period}</span>
               </div>
               <p style={{fontSize:13,color:c.t2,marginBottom:24,lineHeight:1.45}}>{p.desc}</p>
@@ -456,7 +454,7 @@ function Pricing({go,onStart}){
                   </div>
                 ))}
               </div>
-              <button onClick={()=>p.cta==="Začni brezplačno"?onStart():registerInterest(p.name)} disabled={p.cta!=="Začni brezplačno"&&recorded[p.name]} style={{width:"100%",padding:"13px 0",borderRadius:12,border:p.hl?"none":`1.5px solid ${c.border}`,background:p.hl?c.olive:c.white,color:p.hl?c.white:c.t1,fontSize:14,fontWeight:600,cursor:p.cta!=="Začni brezplačno"&&recorded[p.name]?"default":"pointer",fontFamily:f,opacity:p.cta!=="Začni brezplačno"&&recorded[p.name]?.6:1}}>{p.cta!=="Začni brezplačno"&&recorded[p.name]?"Zabeleženo ✓":p.cta}</button>
+              <button onClick={()=>p.cta==="Začni brezplačno"?onStart():registerInterest(p.name)} disabled={p.cta!=="Začni brezplačno"&&recorded[p.name]} style={{width:"100%",padding:"13px 0",borderRadius:radius.md,border:p.hl?"none":`1.5px solid ${c.border}`,background:p.hl?c.olive:c.white,color:p.hl?c.white:c.t1,fontSize:14,fontWeight:600,cursor:p.cta!=="Začni brezplačno"&&recorded[p.name]?"default":"pointer",fontFamily:f,opacity:p.cta!=="Začni brezplačno"&&recorded[p.name]?.6:1}}>{p.cta!=="Začni brezplačno"&&recorded[p.name]?"Zabeleženo ✓":p.cta}</button>
             </div>
           ))}
         </div>
@@ -470,7 +468,7 @@ function Pricing({go,onStart}){
           <p style={{textAlign:"center",fontSize:15,color:c.t2,marginBottom:isMobile?10:36}}>Podroben pregled, kaj je vključeno v vsak paket.</p>
           {isMobile&&<div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,fontSize:12,color:c.t3,marginBottom:14}}>Podrsajte za več <ArrowRight size={13}/></div>}
           <div style={{position:"relative"}}>
-          <div style={{borderRadius:16,border:`1px solid ${c.border}`,overflowX:isMobile?"auto":"hidden"}}>
+          <div style={{borderRadius:radius.lg,border:`1px solid ${c.border}`,overflowX:isMobile?"auto":"hidden"}}>
             {/* Header row */}
             <div style={{display:"grid",gridTemplateColumns:isMobile?"180px repeat(4,120px)":"1fr repeat(4,140px)",minWidth:isMobile?660:"auto",background:c.ivory,borderBottom:`1px solid ${c.border}`}}>
               <div style={{padding:"16px 20px"}}/>
@@ -495,7 +493,7 @@ function Pricing({go,onStart}){
               );
             })}
           </div>
-          {isMobile&&<div style={{position:"absolute",top:0,right:0,bottom:0,width:28,background:`linear-gradient(90deg, transparent, ${c.white})`,pointerEvents:"none",borderRadius:"0 16px 16px 0"}}/>}
+          {isMobile&&<div style={{position:"absolute",top:0,right:0,bottom:0,width:28,background:`linear-gradient(90deg, transparent, ${c.white})`,pointerEvents:"none",borderRadius:`0 ${radius.lg}px ${radius.lg}px 0`}}/>}
           </div>
         </div>
       </section>
@@ -522,7 +520,7 @@ function Pricing({go,onStart}){
 
       {/* CTA */}
       <section style={{...sec,padding:"0 32px 80px",textAlign:"center"}}>
-        <button onClick={onStart} style={{display:"inline-flex",alignItems:"center",gap:10,padding:"16px 36px",borderRadius:14,border:"none",background:c.olive,color:c.white,fontSize:16,fontWeight:700,cursor:"pointer",fontFamily:f,boxShadow:`0 4px 24px ${c.olive}35`}}>Začni brezplačno <ArrowRight size={20}/></button>
+        <button onClick={onStart} style={{display:"inline-flex",alignItems:"center",gap:10,padding:"16px 36px",borderRadius:radius.md,border:"none",background:c.olive,color:c.white,fontSize:16,fontWeight:700,cursor:"pointer",fontFamily:f,boxShadow:`0 4px 24px ${c.olive}35`}}>Začni brezplačno <ArrowRight size={20}/></button>
       </section>
       <Footer/>
     </div>
@@ -710,22 +708,23 @@ function DeadlineCalendar({grantItems=[],onSelect}){
         </div>);
       })}
     </div>
-    <h3 style={{fontSize:15,fontWeight:700,color:c.t1,marginBottom:14}}>Naslednji roki</h3>
-    <div style={{display:"flex",flexDirection:"column",gap:10}}>
-      {upcoming.length===0?<div style={{padding:"20px 18px",borderRadius:14,background:c.white,border:`1px solid ${c.border}`,color:c.t2,fontSize:13}}>Ni prihajajočih rokov med aktualnimi razpisi.</div>:
-      upcoming.map(g=>{const d=new Date(g.deadlineAt);return(<div key={g.id} onClick={()=>onSelect(g)} style={{display:"flex",alignItems:"center",gap:14,padding:"14px 18px",borderRadius:14,border:`1px solid ${c.border}`,background:c.white,cursor:"pointer"}}>
-        <div style={{width:44,textAlign:"center",flexShrink:0}}>
-          <div style={{fontSize:18,fontWeight:700,color:c.t1,lineHeight:1.1}}>{d.getDate()}</div>
+    <h3 style={{fontSize:15,fontWeight:700,color:c.t1,marginBottom:10}}>Naslednji roki</h3>
+    {upcoming.length===0?<div style={{padding:"20px 18px",borderRadius:radius.md,background:c.white,border:`1px solid ${c.border}`,color:c.t2,fontSize:13}}>Ni prihajajočih rokov med aktualnimi razpisi.</div>:(
+    <div style={{borderTop:`1px solid ${c.border}`}}>
+      {upcoming.map(g=>{const d=new Date(g.deadlineAt);return(<div key={g.id} onClick={()=>onSelect(g)} style={{display:"flex",alignItems:"center",gap:16,padding:"13px 2px",borderBottom:`1px solid ${c.border}`,cursor:"pointer"}}>
+        <div style={{width:40,textAlign:"center",flexShrink:0,...tnum}}>
+          <div style={{fontSize:17,fontWeight:700,color:c.t1,lineHeight:1.1}}>{d.getDate()}</div>
           <div style={{fontSize:10,color:c.t3,textTransform:"uppercase"}}>{d.toLocaleDateString("sl-SI",{month:"short"})}</div>
         </div>
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:14,fontWeight:600,color:c.t1,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.title}</div>
           <div style={{fontSize:12,color:c.t2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.funder}</div>
         </div>
-        {!isMobile&&<div style={{fontSize:13,fontWeight:700,color:c.t1,flexShrink:0}}>{g.amountLabel}</div>}
+        {!isMobile&&<div style={{fontSize:13,fontWeight:700,color:c.t1,flexShrink:0,...tnum}}>{g.amountLabel}</div>}
         <ChevronRight size={16} color={c.t3}/>
       </div>);})}
     </div>
+    )}
   </div>);
 }
 
@@ -754,32 +753,30 @@ function AlertsView({grantItems=[],onSelect}){
   const{deadlineSoon,newMatches,total}=computeAlerts(grantItems);
 
   const Row=({g,badge,badgeColor})=>(
-    <div onClick={()=>onSelect(g)} style={{display:"flex",alignItems:"center",gap:14,padding:"14px 18px",borderRadius:14,border:`1px solid ${c.border}`,background:c.white,cursor:"pointer"}}>
+    <div onClick={()=>onSelect(g)} style={{display:"flex",alignItems:"center",gap:14,padding:"13px 2px",borderBottom:`1px solid ${c.border}`,cursor:"pointer"}}>
       <div style={{flex:1,minWidth:0}}>
         <div style={{fontSize:14,fontWeight:600,color:c.t1,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.title}</div>
         <div style={{fontSize:12,color:c.t2}}>{g.funder}</div>
       </div>
-      <span style={{fontSize:11,fontWeight:700,color:badgeColor,background:`${badgeColor}18`,padding:"4px 10px",borderRadius:6,flexShrink:0,whiteSpace:"nowrap"}}>{badge}</span>
+      <span style={{fontSize:11,fontWeight:700,color:badgeColor,background:`${badgeColor}18`,padding:"4px 10px",borderRadius:radius.xs,flexShrink:0,whiteSpace:"nowrap"}}>{badge}</span>
       <ChevronRight size={16} color={c.t3}/>
     </div>
   );
-  const empty=(text)=><div style={{padding:"20px 18px",borderRadius:14,background:c.white,border:`1px solid ${c.border}`,color:c.t2,fontSize:13}}>{text}</div>;
+  const empty=(text)=><div style={{padding:"20px 18px",borderRadius:radius.md,background:c.white,border:`1px solid ${c.border}`,color:c.t2,fontSize:13}}>{text}</div>;
 
   return(<div style={{flex:1,overflowY:isMobile?"visible":"auto",padding:isMobile?"18px 16px 28px":"28px 28px 40px"}}>
     <div style={{marginBottom:28}}>
       <h2 style={{fontSize:22,fontWeight:700,color:c.t1,marginBottom:4}}>Opozorila</h2>
       <p style={{fontSize:13,color:c.t2}}>{total>0?`${total} opozoril za razpise z ujemanjem nad 60 %.`:"Trenutno ni opozoril za vaš profil."}</p>
     </div>
-    <h3 style={{fontSize:15,fontWeight:700,color:c.t1,marginBottom:14}}>Bližajoči se roki</h3>
-    <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:32}}>
+    <h3 style={{fontSize:15,fontWeight:700,color:c.t1,marginBottom:10}}>Bližajoči se roki</h3>
+    <div style={{marginBottom:28}}>
       {deadlineSoon.length===0?empty("Noben ujemajoč razpis nima roka v naslednjih 14 dneh."):
-        deadlineSoon.map(g=><Row key={g.id} g={g} badge={g.daysLeft===0?"DANES":g.daysLeft===1?"JUTRI":`ŠE ${g.daysLeft} DNI`} badgeColor={g.daysLeft<=3?c.coral:c.amber}/>)}
+        <div style={{borderTop:`1px solid ${c.border}`}}>{deadlineSoon.map(g=><Row key={g.id} g={g} badge={g.daysLeft===0?"DANES":g.daysLeft===1?"JUTRI":`ŠE ${g.daysLeft} DNI`} badgeColor={g.daysLeft<=3?c.coral:c.amber}/>)}</div>}
     </div>
-    <h3 style={{fontSize:15,fontWeight:700,color:c.t1,marginBottom:14}}>Novi ujemajoči razpisi</h3>
-    <div style={{display:"flex",flexDirection:"column",gap:10}}>
-      {newMatches.length===0?empty("Zadnjih 7 dni ni novih ujemajočih razpisov."):
-        newMatches.map(g=><Row key={g.id} g={g} badge="NOVO" badgeColor={c.olive}/>)}
-    </div>
+    <h3 style={{fontSize:15,fontWeight:700,color:c.t1,marginBottom:10}}>Novi ujemajoči razpisi</h3>
+    {newMatches.length===0?empty("Zadnjih 7 dni ni novih ujemajočih razpisov."):
+      <div style={{borderTop:`1px solid ${c.border}`}}>{newMatches.map(g=><Row key={g.id} g={g} badge="NOVO" badgeColor={c.olive}/>)}</div>}
   </div>);
 }
 
@@ -841,8 +838,8 @@ function AiAssistantChat({companyId}){
       <div ref={bottomRef}/>
     </div>
     <div style={{display:"flex",gap:8,flexShrink:0}}>
-      <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();send();}}} placeholder="Vprašajte o razpisih …" style={{flex:1,height:48,border:`1px solid ${c.border}`,borderRadius:12,padding:"0 16px",fontSize:14,fontFamily:f,color:c.t1,background:c.white,outline:"none"}}/>
-      <button onClick={()=>send()} disabled={loading||!input.trim()} style={{padding:"0 22px",height:48,borderRadius:12,border:"none",background:loading||!input.trim()?c.border:c.graphite,color:c.white,fontSize:14,fontWeight:600,fontFamily:f,cursor:loading||!input.trim()?"default":"pointer"}}>Pošlji</button>
+      <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();send();}}} placeholder="Vprašajte o razpisih …" style={{flex:1,height:48,border:`1px solid ${c.border}`,borderRadius:radius.md,padding:"0 16px",fontSize:14,fontFamily:f,color:c.t1,background:c.white,outline:"none"}}/>
+      <button onClick={()=>send()} disabled={loading||!input.trim()} style={{padding:"0 22px",height:48,borderRadius:radius.md,border:"none",background:loading||!input.trim()?c.border:c.graphite,color:c.white,fontSize:14,fontWeight:600,fontFamily:f,cursor:loading||!input.trim()?"default":"pointer"}}>Pošlji</button>
     </div>
   </div>);
 }
