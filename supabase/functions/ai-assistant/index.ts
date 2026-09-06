@@ -20,14 +20,16 @@ async function checkAiBudget(supabase: ReturnType<typeof createClient>): Promise
 
 async function recordAiUsage(supabase: ReturnType<typeof createClient>, inputTokens: number, outputTokens: number) {
   const today = new Date().toISOString().slice(0, 10);
-  const { data } = await supabase.from("ai_usage").select("input_tokens, output_tokens, request_count").eq("usage_date", today).maybeSingle();
-  await supabase.from("ai_usage").upsert({
+  const { data, error: selectError } = await supabase.from("ai_usage").select("input_tokens, output_tokens, request_count").eq("usage_date", today).maybeSingle();
+  if (selectError) console.error("ai_usage select napaka:", selectError.message);
+  const { error: upsertError } = await supabase.from("ai_usage").upsert({
     usage_date: today,
     input_tokens: Number(data?.input_tokens || 0) + inputTokens,
     output_tokens: Number(data?.output_tokens || 0) + outputTokens,
     request_count: Number(data?.request_count || 0) + 1,
     updated_at: new Date().toISOString(),
   }, { onConflict: "usage_date" });
+  if (upsertError) console.error("ai_usage upsert napaka:", upsertError.message);
 }
 
 // AI pomočnik: samo pogovor o razpisih/profilu podjetja (brez tool use, ne spreminja baze).
