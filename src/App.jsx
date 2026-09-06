@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import {
-  LayoutGrid,FileText,Sparkles,User,Bell,Calendar,Bot,Search,
+  LayoutGrid,FileText,User,Bell,Calendar,Bot,Search,
   ChevronRight,ChevronDown,X,ExternalLink,Bookmark,Check,Filter,
-  BarChart3,Globe,Clock,Coins,MapPin,Building2,TrendingUp,
+  BarChart3,Globe,MapPin,Building2,TrendingUp,
   Zap,Shield,Loader2,ArrowRight,Cpu,Leaf,FlaskConical,Users,
   Building,GraduationCap,ChevronLeft,Pencil,Timer,Eye,Lock,
   Layers,MessageSquare,BellRing,Database,FileSearch,ArrowUpRight,
@@ -22,7 +22,6 @@ const fSerif="'Newsreader',Georgia,serif";
 // Konsistenten radius/spacing sistem — glavne površine 12-14, sekundarne 8-10, majhni elementi 6-8.
 // Pill (999) samo za semantične oznake (status/filter), ne kot privzet element.
 const radius={lg:14,md:10,sm:8,xs:6,pill:999};
-const space=[0,4,8,12,16,24,32,48,64];
 const tnum={fontVariantNumeric:"tabular-nums"};
 
 function useIsMobile(){
@@ -761,6 +760,14 @@ function computeAlerts(grantItems=[]){
   return{deadlineSoon,newMatches,total:deadlineSoon.length+newMatches.length};
 }
 
+// Najbližji prihodnji rok med relevantnimi (ujemanje ≥60 %) razpisi — za kompaktni Pregled.
+// Izven komponente (kot computeAlerts zgoraj), da Date.now() ni klican neposredno v render telesu.
+function nearestUpcomingDeadline(grantItems=[]){
+  const now=Date.now();
+  const relevant=grantItems.filter(g=>g.matchScore>=60&&g.deadlineAt&&new Date(g.deadlineAt).getTime()>=now);
+  return relevant.length?relevant.reduce((a,b)=>new Date(a.deadlineAt)<new Date(b.deadlineAt)?a:b):null;
+}
+
 function AlertsView({grantItems=[],onSelect}){
   const isMobile=useIsMobile();
   const{deadlineSoon,newMatches,total}=computeAlerts(grantItems);
@@ -1131,8 +1138,7 @@ function Dashboard({maticna,profile}){
 
   // Kompakten pregled: samo obstoječi, že izračunani podatki — nič se ne izmišljuje.
   // Če katerega podatka (še) ni na voljo, metrika izpade namesto lažnega "0".
-  const relevantForDeadline=grantItems.filter(g=>g.matchScore>=60&&g.deadlineAt&&new Date(g.deadlineAt).getTime()>=Date.now());
-  const nearestDeadlineGrant=relevantForDeadline.length?relevantForDeadline.reduce((a,b)=>new Date(a.deadlineAt)<new Date(b.deadlineAt)?a:b):null;
+  const nearestDeadlineGrant=nearestUpcomingDeadline(grantItems);
   const refreshTimestamps=sourceHealth.map(s=>s.last_success?new Date(s.last_success).getTime():NaN).filter(Number.isFinite);
   const lastRefreshDate=refreshTimestamps.length?new Date(Math.max(...refreshTimestamps)):null;
   const fmtRefresh=d=>`${d.toLocaleDateString("sl-SI",{day:"2-digit",month:"2-digit"})} · ${d.toLocaleTimeString("sl-SI",{hour:"2-digit",minute:"2-digit"})}`;
