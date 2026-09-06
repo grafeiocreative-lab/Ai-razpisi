@@ -62,6 +62,8 @@ function Footer(){
 function Landing({go,onStart}){
   const isMobile=useIsMobile();
   const sec={maxWidth:1080,margin:"0 auto",padding:isMobile?"0 16px":"0 32px"};
+  const[grantCount,setGrantCount]=useState(null);
+  useEffect(()=>{let active=true;(async()=>{const{count}=await sb.from("grants").select("id",{count:"exact",head:true}).in("status",["open","upcoming"]).ilike("source_url","http%");if(active&&typeof count==="number")setGrantCount(count);})();return()=>{active=false;};},[]);
   return(
     <div style={{fontFamily:f,color:c.t1,background:c.ivory}}>
       <Nav page="landing" go={go} onStart={onStart}/>
@@ -73,7 +75,7 @@ function Landing({go,onStart}){
           <button onClick={onStart} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,padding:"16px 36px",borderRadius:14,border:"none",background:c.olive,color:c.white,fontSize:16,fontWeight:700,cursor:"pointer",fontFamily:f,boxShadow:`0 4px 24px ${c.olive}35`}}>Preveri razpise <ArrowRight size={20}/></button>
           <button onClick={()=>go("kako")} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"16px 28px",borderRadius:14,border:`1.5px solid ${c.border}`,background:c.white,color:c.t1,fontSize:16,fontWeight:600,cursor:"pointer",fontFamily:f}}>Kako deluje</button>
         </div>
-        <div style={{display:"flex",flexDirection:isMobile?"column":"row",justifyContent:"center",gap:isMobile?10:40,marginTop:48,opacity:.5}}>{["148 razpisov","95 % natančnost matchinga","Pod 2 min onboarding"].map(t=><span key={t} style={{fontSize:13,fontWeight:500,color:c.t2}}>{t}</span>)}</div>
+        <div style={{display:"flex",flexDirection:isMobile?"column":"row",justifyContent:"center",gap:isMobile?10:40,marginTop:48,opacity:.5}}>{[grantCount!==null?`${grantCount} aktualnih razpisov`:"Aktualni razpisi","Podatki iz AJPES, JODP in EU virov","Rezultat v manj kot 2 minutah"].map(t=><span key={t} style={{fontSize:13,fontWeight:500,color:c.t2}}>{t}</span>)}</div>
       </section>
 
       {/* Before/After teaser */}
@@ -90,9 +92,9 @@ function Landing({go,onStart}){
       <section style={{background:c.white,padding:"80px 0"}}>
         <div style={sec}>
           <h2 style={{fontSize:34,fontWeight:600,textAlign:"center",color:c.t1,marginBottom:12,fontFamily:fSerif}}>Od 0 € naprej</h2>
-          <p style={{textAlign:"center",fontSize:15,color:c.t2,marginBottom:32}}>Brezplačni paket za pregled. Plačljivi paketi za polno AI izkušnjo.</p>
+          <p style={{textAlign:"center",fontSize:15,color:c.t2,marginBottom:32}}>Brezplačno za pregled razpisov. Plačljivo, ko želite ujemanje in AI pomočnika.</p>
           <div style={{display:"flex",flexDirection:isMobile?"column":"row",justifyContent:"center",gap:24}}>
-            {[["Brezplačno","0 €","Pregled razpisov"],["Osnovno","19 €/mes","AI matching"],["Profesionalno","49 €/mes","Polna AI izkušnja"],["Svetovalci","99 €/mes","Več podjetij"]].map(([n,p,d])=>(
+            {[["Brezplačno","0 €","Pregled razpisov"],["Osnovno","19 €/mes","AI ujemanje"],["Profesionalno","49 €/mes","Ujemanje in AI pomočnik"],["Svetovalci","99 €/mes","Več podjetij"]].map(([n,p,d])=>(
               <div key={n} style={{padding:"20px 24px",borderRadius:14,border:`1px solid ${c.border}`,background:c.ivory,minWidth:150,textAlign:"center"}}><div style={{fontSize:11,fontWeight:700,color:c.t3,letterSpacing:".04em",marginBottom:8}}>{n}</div><div style={{fontSize:24,fontWeight:800,color:c.t1,marginBottom:4}}>{p}</div><div style={{fontSize:12,color:c.t2}}>{d}</div></div>
             ))}
           </div>
@@ -134,23 +136,23 @@ function HowItWorks({go,onStart}){
           {num:"01",title:"Vpišite eno številko",Icon:Search,color:"c-teal",
             desc:"Vpišete matično (10 mest) ali davčno (8 mest) številko. Sistem avtomatsko prepozna format in sproži pridobivanje podatkov iz treh virov.",
             detail:[
-              {src:"AJPES ePRS",what:"Firma, naslov, SKD šifre dejavnosti, pravna oblika, datum vpisa, velikostni razred",Icon:Database},
+              {src:"AJPES poslovni register",what:"Firma, naslov, regija, pravna oblika",Icon:Database},
               {src:"JODP (Ministrstvo za finance)",what:"Celotna zgodovina prejetih državnih in de minimis pomoči z zneski in datumi",Icon:Shield},
               {src:"VIES (EU)",what:"Validacija davčne številke in potrditev aktivnega zavezanca",Icon:Globe},
             ]},
           {num:"02",title:"Potrdite profil",Icon:Check,color:"c-olive",
             desc:"Vse je predizpolnjeno. Preverite podatke iz registra, potrdite de minimis stanje in dodajte 3 številke za KMU klasifikacijo.",
             detail:[
-              {src:"Avtomatsko iz registra",what:"Firma, naslov → regija NUTS-2, SKD šifre → dejavnosti, pravna oblika, starost podjetja",Icon:FileSearch},
-              {src:"KMU klasifikacija",what:"Število zaposlenih + letni prihodek + bilančna vsota → mikro / malo / srednje podjetje po EU merilih (2003/361/ES)",Icon:BarChart3},
-              {src:"Strateški interesi",what:"AI predlaga kategorije na podlagi SKD kode. Vi potrdite ali prilagodite: digitalizacija, izvoz, zeleni prehod, R&D …",Icon:Sparkles},
+              {src:"Avtomatsko iz registra",what:"Firma, naslov, regija in pravna oblika se prenesejo neposredno iz registra",Icon:FileSearch},
+              {src:"KMU klasifikacija",what:"Vpišete število zaposlenih, letni prihodek in bilančno vsoto. Sistem izračuna, ali ste mikro, malo ali srednje podjetje.",Icon:BarChart3},
+              {src:"Strateški interesi",what:"Izberete področja, ki so pomembna za vaše podjetje: digitalizacija, izvoz, zeleni prehod, razvoj in raziskave …",Icon:Sparkles},
             ]},
           {num:"03",title:"Prejmite priložnosti",Icon:Sparkles,color:"c-green",
-            desc:"Matching engine primerja vaš profil z vsemi odprtimi razpisi po petih oseh. V sekundi vidite, kaj je za vas.",
+            desc:"Vaš profil primerjamo z vsemi odprtimi razpisi. V nekaj sekundah vidite, kateri vam ustrezajo in koliko.",
             detail:[
-              {src:"SKD ujemanje",what:"Vaše registrirane dejavnosti ↔ upravičene SKD kode v razpisu",Icon:Layers},
-              {src:"KMU + regija + de minimis",what:"Velikost podjetja, lokacija in preostali de minimis prostor ↔ pogoji razpisa",Icon:Shield},
-              {src:"Interesi + AI ocena",what:"Vaši strateški cilji ↔ namen razpisa. AI prevede birokratski jezik v pogovorni.",Icon:MessageSquare},
+              {src:"Strateški interesi",what:"Vaši izbrani cilji (digitalizacija, izvoz, zeleni prehod …) se primerjajo z namenom razpisa.",Icon:Layers},
+              {src:"KMU, regija in de minimis",what:"Velikost podjetja, lokacija in preostali de minimis prostor se preverijo proti pogojem razpisa.",Icon:Shield},
+              {src:"AI razlaga",what:"Uradno besedilo razpisa prevedemo v razumljiv jezik, brez pravniškega žargona.",Icon:MessageSquare},
             ]},
         ].map((step,si)=>(
           <div key={step.num} style={{...card,padding:isMobile?"24px 18px":"36px 32px",marginBottom:24}}>
@@ -196,20 +198,18 @@ function HowItWorks({go,onStart}){
 
       {/* Matching osi */}
       <section style={{...sec,padding:isMobile?"48px 16px":"64px 32px"}}>
-        <h2 style={{fontSize:28,fontWeight:700,color:c.t1,marginBottom:8}}>5 osi matchinga</h2>
-        <p style={{fontSize:15,color:c.t2,lineHeight:1.6,marginBottom:32,maxWidth:640}}>Vsak razpis je ocenjen po petih kriterijih. Rezultat je match score (%) in checklist, ki pokaže, kje ste upravičeni in kje ne.</p>
+        <h2 style={{fontSize:28,fontWeight:700,color:c.t1,marginBottom:8}}>4 merila ujemanja</h2>
+        <p style={{fontSize:15,color:c.t2,lineHeight:1.6,marginBottom:32,maxWidth:640}}>Vsak razpis primerjamo z vašim profilom po štirih merilih. Rezultat je odstotek ujemanja in seznam pogojev, ki pove, kje ustrezate in kje ne.</p>
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           {[
-            {n:"SKD dejavnost",d:"Vaše registrirane dejavnosti ↔ upravičene SKD kode razpisa. Primerja glavno in vse registrirane.",Icon:Layers,w:"35%"},
-            {n:"KMU status",d:"Mikro, malo ali srednje podjetje po EU definiciji. Binaren filter: večina razpisov zahteva KMU.",Icon:Building2,w:"25%"},
-            {n:"Regija",d:"Vzhodna ali Zahodna Slovenija (NUTS-2). Nekateri razpisi so regionalno omejeni ali dajejo prednost kohezijski regiji.",Icon:MapPin,w:"15%"},
-            {n:"De minimis prostor",d:"Preostali prostor do 300.000 €. Če razpis presega vaš prostor, to vpliva na score.",Icon:Shield,w:"15%"},
-            {n:"Strateški interesi",d:"Vaši izbrani cilji ↔ namen razpisa. Digitalizacija, izvoz, zeleni prehod, R&D.",Icon:Sparkles,w:"10%"},
+            {n:"Strateški interesi",d:"Vaši izbrani cilji (digitalizacija, izvoz, zeleni prehod, razvoj …) se primerjajo z namenom razpisa.",Icon:Sparkles},
+            {n:"Velikost podjetja (KMU)",d:"Mikro, malo ali srednje podjetje po EU definiciji. Večina razpisov je namenjenih samo KMU.",Icon:Building2},
+            {n:"Regija",d:"Vzhodna ali Zahodna Slovenija. Nekateri razpisi so omejeni na eno od regij.",Icon:MapPin},
+            {n:"De minimis prostor",d:"Preostali prostor do 300.000 €. Če razpis presega vaš prostor, se to pozna pri ujemanju.",Icon:Shield},
           ].map(a=>(
             <div key={a.n} style={{display:"flex",alignItems:isMobile?"flex-start":"center",gap:16,padding:"18px 20px",borderRadius:14,background:c.white,border:`1px solid ${c.border}`}}>
               <div style={{width:40,height:40,borderRadius:10,background:c.oliveMed,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><a.Icon size={18} color={c.olive} strokeWidth={1.75}/></div>
               <div style={{flex:1}}><div style={{fontSize:14,fontWeight:600,color:c.t1,marginBottom:2}}>{a.n}</div><div style={{fontSize:13,color:c.t2,lineHeight:1.45}}>{a.d}</div></div>
-              {!isMobile&&<div style={{textAlign:"right",flexShrink:0}}><div style={{fontSize:20,fontWeight:800,color:c.olive}}>{a.w}</div><div style={{fontSize:11,color:c.t3}}>utež</div></div>}
             </div>
           ))}
         </div>
@@ -232,11 +232,11 @@ const plans=[
   {name:"Brezplačno",price:"0",period:"za vedno",desc:"Pregled razpisov brez personalizacije.",hl:false,cta:"Začni brezplačno",
    features:["Pregled vseh razpisov","Osnovni filtri","Iskanje po ključnih besedah"]},
   {name:"Osnovno",price:"19",period:"/ mesec",desc:"Za podjetnike, ki želijo vedeti, kaj je na voljo.",hl:false,cta:"Preizkusi 14 dni",
-   features:["Vse iz Brezplačnega","1 profil podjetja","AI matching in ujemanje %","Osnovna opozorila za roke","De minimis sledenje (JODP)","E-poštna obvestila"]},
-  {name:"Profesionalno",price:"49",period:"/ mesec",desc:"Polna AI izkušnja za resen pristop k razpisom.",hl:true,cta:"Preizkusi 14 dni",
-   features:["Vse iz Osnovnega","AI prevod v pogovorni jezik","AI pomočnik (vprašaj karkoli)","Napredna opozorila + koledar","Izvoz poročil (PDF)","Prioritetna podpora"]},
+   features:["Vse iz Brezplačnega","1 profil podjetja","Odstotek ujemanja za vsak razpis","Opozorila za bližajoče se roke","De minimis sledenje (JODP)"]},
+  {name:"Profesionalno",price:"49",period:"/ mesec",desc:"Za resen pristop k razpisom.",hl:true,cta:"Preizkusi 14 dni",
+   features:["Vse iz Osnovnega","AI prevod v pogovorni jezik","AI pomočnik (vprašaj karkoli)","Koledar rokov","Izvoz poročil (PDF)","Prioritetna podpora"]},
   {name:"Za svetovalce",price:"99",period:"/ mesec",desc:"Upravljajte razpise za več strank hkrati.",hl:false,cta:"Kontaktirajte nas",
-   features:["Vse iz Profesionalnega","Do 10 profilov podjetij","Skupinski dashboard","De minimis pregled za vse","API dostop","Namenski onboarding"]},
+   features:["Vse iz Profesionalnega","Do 10 profilov podjetij","Skupinski pregled","De minimis pregled za vse","API dostop","Osebna uvedba"]},
 ];
 
 const compareFeatures=[
@@ -247,18 +247,18 @@ const compareFeatures=[
   ["De minimis sledenje (JODP)","—","da","da","da"],
   ["KMU klasifikacija","—","da","da","da"],
   ["cat","AI funkcije"],
-  ["AI matching (ujemanje %)","—","da","da","da"],
+  ["Odstotek ujemanja","—","da","da","da"],
   ["AI prevod v pogovorni jezik","—","—","da","da"],
   ["AI pomočnik","—","—","da","da"],
   ["cat","Opozorila in izvoz"],
-  ["E-poštna obvestila","—","osnovna","napredna","napredna"],
+  ["Opozorila v aplikaciji","—","da","da","da"],
   ["Koledar rokov","—","—","da","da"],
   ["Izvoz poročil (PDF)","—","—","da","da"],
   ["cat","Podpora"],
   ["Dokumentacija","da","da","da","da"],
   ["E-poštna podpora","—","da","da","da"],
   ["Prioritetna podpora","—","—","da","da"],
-  ["Namenski onboarding","—","—","—","da"],
+  ["Osebna uvedba","—","—","—","da"],
   ["API dostop","—","—","—","da"],
 ];
 
