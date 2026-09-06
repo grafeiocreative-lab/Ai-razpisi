@@ -155,7 +155,7 @@ function HeroVideo({go,onStart,grantCount}){
   const reducedMotion=usePrefersReducedMotion();
   const trustItems=[grantCount!==null?`${grantCount} razpisov`:"Aktualni razpisi","AI ujemanje","Pod 2 min do pregleda"];
   // Mobile dobi namenski navpičen video (drug kader/crop), ne stisnjen desktop posnetek
-  const videoBase=isMobile?"/hero/hero-mobile":"/hero/hero-desktop-v2";
+  const videoBase=isMobile?"/hero/hero-mobile":"/hero/hero-desktop-v3";
   const posterSrc=isMobile?"/hero/hero-mobile-poster.jpg":"/hero/hero-poster.jpg";
   return(
     <section className={isMobile?"hero-mobile-section":undefined} style={{position:"relative",width:"100%",minHeight:isMobile?undefined:760,height:isMobile?undefined:"88vh",overflow:"hidden",display:"flex",alignItems:isMobile?"flex-start":"center"}}>
