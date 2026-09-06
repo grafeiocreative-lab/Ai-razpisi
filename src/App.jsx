@@ -491,6 +491,85 @@ function DeMinimisSection({maticna}){
   </div>);
 }
 
+/* ═══ KOLEDAR ROKOV ════════════════════════════════ */
+function DeadlineCalendar({grantItems=[],onSelect}){
+  const isMobile=useIsMobile();
+  const [monthOffset,setMonthOffset]=useState(0);
+  const today=new Date();
+  const todayKey=`${today.getFullYear()}-${today.getMonth()}-${today.getDate()}`;
+
+  const withDeadline=grantItems.filter(g=>g.deadlineAt&&(g.status==="open"||g.status==="upcoming"));
+
+  const viewDate=new Date(today.getFullYear(),today.getMonth()+monthOffset,1);
+  const year=viewDate.getFullYear(),month=viewDate.getMonth();
+  const startWeekday=(new Date(year,month,1).getDay()+6)%7; // ponedeljek = 0
+  const daysInMonth=new Date(year,month+1,0).getDate();
+  const monthLabel=viewDate.toLocaleDateString("sl-SI",{month:"long",year:"numeric"});
+
+  const byDay={};
+  withDeadline.forEach(g=>{
+    const d=new Date(g.deadlineAt);
+    const key=`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+    (byDay[key]=byDay[key]||[]).push(g);
+  });
+
+  const cells=[];
+  for(let i=0;i<startWeekday;i++)cells.push(null);
+  for(let d=1;d<=daysInMonth;d++)cells.push(d);
+
+  const startOfToday=new Date(today.getFullYear(),today.getMonth(),today.getDate());
+  const upcoming=[...withDeadline]
+    .filter(g=>new Date(g.deadlineAt)>=startOfToday)
+    .sort((a,b)=>new Date(a.deadlineAt)-new Date(b.deadlineAt))
+    .slice(0,8);
+
+  const navBtn={width:32,height:32,borderRadius:8,border:`1px solid ${c.border}`,background:c.white,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"};
+
+  return(<div style={{flex:1,overflowY:isMobile?"visible":"auto",padding:isMobile?"18px 16px 28px":"28px 28px 40px"}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
+      <h2 style={{fontSize:22,fontWeight:700,color:c.t1,textTransform:"capitalize"}}>{monthLabel}</h2>
+      <div style={{display:"flex",gap:8}}>
+        <div onClick={()=>setMonthOffset(m=>m-1)} style={navBtn}><ChevronLeft size={16} color={c.t2}/></div>
+        <div onClick={()=>setMonthOffset(0)} style={{...navBtn,width:"auto",padding:"0 14px",fontSize:12,fontWeight:600,color:c.t1,fontFamily:f}}>Danes</div>
+        <div onClick={()=>setMonthOffset(m=>m+1)} style={navBtn}><ChevronRight size={16} color={c.t2}/></div>
+      </div>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6,marginBottom:8}}>
+      {["Pon","Tor","Sre","Čet","Pet","Sob","Ned"].map(d=><div key={d} style={{fontSize:11,fontWeight:700,color:c.t3,textAlign:"center",padding:"4px 0"}}>{d}</div>)}
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6,marginBottom:32}}>
+      {cells.map((d,i)=>{
+        if(d===null)return<div key={i}/>;
+        const key=`${year}-${month}-${d}`;
+        const items=byDay[key]||[];
+        const isToday=key===todayKey;
+        const maxShow=isMobile?1:2;
+        return(<div key={i} onClick={()=>items.length&&onSelect(items[0])} style={{minHeight:isMobile?52:76,minWidth:0,borderRadius:10,border:`1px solid ${isToday?c.olive:c.border}`,background:items.length?c.oliveLight:c.white,padding:"6px 7px",display:"flex",flexDirection:"column",gap:3,cursor:items.length?"pointer":"default"}}>
+          <span style={{fontSize:12,fontWeight:isToday?700:500,color:isToday?c.olive:c.t2}}>{d}</span>
+          {items.slice(0,maxShow).map(g=><span key={g.id} style={{fontSize:9,color:c.t1,background:c.white,border:`1px solid ${c.olive}30`,borderRadius:5,padding:"1px 5px",display:"block",width:"100%",boxSizing:"border-box",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.title}</span>)}
+          {items.length>maxShow&&<span style={{fontSize:9,color:c.olive,fontWeight:700}}>+{items.length-maxShow}</span>}
+        </div>);
+      })}
+    </div>
+    <h3 style={{fontSize:15,fontWeight:700,color:c.t1,marginBottom:14}}>Naslednji roki</h3>
+    <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      {upcoming.length===0?<div style={{padding:"20px 18px",borderRadius:14,background:c.white,border:`1px solid ${c.border}`,color:c.t2,fontSize:13}}>Ni prihajajočih rokov med aktualnimi razpisi.</div>:
+      upcoming.map(g=>{const d=new Date(g.deadlineAt);return(<div key={g.id} onClick={()=>onSelect(g)} style={{display:"flex",alignItems:"center",gap:14,padding:"14px 18px",borderRadius:14,border:`1px solid ${c.border}`,background:c.white,cursor:"pointer"}}>
+        <div style={{width:44,textAlign:"center",flexShrink:0}}>
+          <div style={{fontSize:18,fontWeight:700,color:c.t1,lineHeight:1.1}}>{d.getDate()}</div>
+          <div style={{fontSize:10,color:c.t3,textTransform:"uppercase"}}>{d.toLocaleDateString("sl-SI",{month:"short"})}</div>
+        </div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:14,fontWeight:600,color:c.t1,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.title}</div>
+          <div style={{fontSize:12,color:c.t2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.funder}</div>
+        </div>
+        {!isMobile&&<div style={{fontSize:13,fontWeight:700,color:c.t1,flexShrink:0}}>{g.amountLabel}</div>}
+        <ChevronRight size={16} color={c.t3}/>
+      </div>);})}
+    </div>
+  </div>);
+}
+
 /* ═══ COMPANY PROFILE ══════════════════════════════ */
 function CompanyProfile({maticna,grantItems=[],onGoToGrants}){
   const isMobile=useIsMobile();
@@ -753,14 +832,15 @@ function Dashboard({maticna,profile}){
   const filteredGrants=filterGrants(grantItems,af);
   const selectedIsTop=filteredGrants[0]?.id===sel?.id;
   const matchedCount=grantItems.filter(g=>g.matchScore>=60).length;
-  const nav=[{icon:LayoutGrid,label:"Pregled"},{icon:FileText,label:"Razpisi"},{icon:Sparkles,label:"Priložnosti zame",badge:matchedCount||undefined},{icon:User,label:"Moj profil"},{icon:Bell,label:"Opozorila",soon:true},{icon:Calendar,label:"Koledar rokov",soon:true},{icon:Bot,label:"AI pomočnik",soon:true}];
+  const nav=[{icon:LayoutGrid,label:"Pregled"},{icon:FileText,label:"Razpisi"},{icon:Sparkles,label:"Priložnosti zame",badge:matchedCount||undefined},{icon:User,label:"Moj profil"},{icon:Bell,label:"Opozorila",soon:true},{icon:Calendar,label:"Koledar rokov"},{icon:Bot,label:"AI pomočnik",soon:true}];
   return(<div style={{display:"flex",flexDirection:isMobile?"column":"row",minHeight:"100vh",height:isMobile?"auto":"100vh",width:"100%",fontFamily:f,background:c.ivory,color:c.t1,overflow:isMobile?"visible":"hidden"}}>
     <aside style={{width:isMobile?"100%":250,minWidth:isMobile?0:250,background:c.graphite,display:"flex",flexDirection:"column",padding:isMobile?"14px 12px":"28px 16px 20px",justifyContent:"space-between",position:isMobile?"sticky":"static",top:0,zIndex:30}}><div><div style={{display:"flex",alignItems:"center",gap:12,paddingLeft:isMobile?4:12,marginBottom:isMobile?12:8}}><div style={{width:38,height:38,borderRadius:10,background:c.olive,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:c.white}}>AI</div><div><div style={{color:c.white,fontWeight:700,fontSize:16}}>RAZPISI</div><div style={{color:`${c.white}80`,fontSize:11}}>Pametno do sredstev</div></div></div><nav style={{marginTop:isMobile?0:32,display:"flex",flexDirection:isMobile?"row":"column",gap:4,overflowX:isMobile?"auto":"visible",paddingBottom:isMobile?2:0}}>{nav.map(n=>{const a=navSel===n.label;return(<div key={n.label} onClick={()=>{if(!n.soon)setNavSel(n.label);}} style={{display:"flex",alignItems:"center",gap:isMobile?8:12,padding:isMobile?"9px 12px":"11px 14px",borderRadius:14,cursor:n.soon?"default":"pointer",background:a?c.olive:"transparent",flexShrink:0,opacity:n.soon?.55:1}}><n.icon size={19} strokeWidth={1.75} color={a?c.white:`${c.white}85`}/><span style={{fontSize:14,fontWeight:a?600:450,color:a?c.white:`${c.white}85`,flex:1,whiteSpace:"nowrap"}}>{isMobile&&n.label.length>12?n.label.split(" ")[0]:n.label}</span>{!isMobile&&n.soon&&<span style={{background:`${c.white}15`,color:`${c.white}85`,fontSize:9,fontWeight:700,letterSpacing:".03em",borderRadius:8,padding:"2px 8px"}}>KMALU</span>}{!isMobile&&!n.soon&&n.badge&&<span style={{background:a?c.white:c.olive,color:a?c.olive:c.white,fontSize:11,fontWeight:700,borderRadius:8,padding:"2px 8px"}}>{n.badge}</span>}</div>);})}</nav></div>{!isMobile&&<div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px"}}><div style={{width:34,height:34,borderRadius:10,background:c.olive,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:c.white}}>{(company?.company_name||"P").charAt(0)}</div><div style={{flex:1,minWidth:0}}><div style={{color:c.white,fontSize:13,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{company?.company_name||"Profil podjetja"}</div><div style={{color:`${c.white}55`,fontSize:11}}>Moj profil</div></div></div>}</aside>
     <div style={{flex:1,display:"flex",flexDirection:"column",overflow:isMobile?"visible":"hidden"}}>
       <header style={{display:"flex",alignItems:"center",gap:12,padding:isMobile?"12px 16px":"16px 28px",background:c.white,borderBottom:`1px solid ${c.border}`}}><div style={{flex:1,display:"flex",alignItems:"center",gap:10,background:c.ivory,border:`1px solid ${c.border}`,borderRadius:12,padding:"12px 16px",height:48,minWidth:0}}><Search size={18} color={c.t3}/><input placeholder="Išči po razpisih …" style={{border:"none",background:"transparent",outline:"none",fontSize:14,color:c.t1,fontFamily:f,flex:1,minWidth:0}}/></div><div style={{position:"relative"}}><Bell size={20} color={c.t2}/></div></header>
       <div style={{flex:1,display:"flex",flexDirection:isMobile?"column":"row",overflow:isMobile?"visible":"hidden"}}>
         {navSel==="Moj profil"&&<div style={{flex:1,overflowY:isMobile?"visible":"auto"}}><CompanyProfile maticna={maticna} grantItems={grantItems} onGoToGrants={()=>setNavSel("Pregled")}/></div>}
-        {navSel!=="Moj profil"&&<div style={{flex:1,overflowY:isMobile?"visible":"auto",padding:isMobile?"18px 16px 28px":"28px 28px 40px"}}>
+        {navSel==="Koledar rokov"&&<DeadlineCalendar grantItems={grantItems} onSelect={g=>{setSel(g);setShowD(true);}}/>}
+        {navSel!=="Moj profil"&&navSel!=="Koledar rokov"&&<div style={{flex:1,overflowY:isMobile?"visible":"auto",padding:isMobile?"18px 16px 28px":"28px 28px 40px"}}>
           <div style={{background:c.white,border:`1px solid ${c.border}`,borderRadius:18,padding:isMobile?"24px 18px":"40px 44px",marginBottom:28}}><h1 style={{fontSize:isMobile?25:32,fontWeight:600,lineHeight:1.15,color:c.t1,maxWidth:580,fontFamily:fSerif}}>AI prevod birokratskega jezika.<br/><span style={{color:c.olive,fontFamily:f,fontWeight:800}}>Prave priložnosti.</span></h1><div style={{display:"flex",flexDirection:isMobile?"column":"row",gap:isMobile?14:32,marginTop:28}}>{[{I:FileText,t:"AI PREVOD",d:"Prevedeni v pogovorni jezik"},{I:Sparkles,t:"PAMETNO UJEMANJE",d:"Glede na vaš profil in cilje"},{I:Bell,t:"PRAVOČASNA OBVESTILA",d:"Nikoli več zamujenih rokov"}].map(b=><div key={b.t} style={{display:"flex",alignItems:"flex-start",gap:12,flex:1}}><div style={{width:40,height:40,borderRadius:10,background:c.cream,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><b.I size={18} strokeWidth={1.75} color={c.t1}/></div><div><div style={{fontSize:11,fontWeight:700,letterSpacing:".04em",color:c.t1,marginBottom:3}}>{b.t}</div><div style={{fontSize:13,color:c.t2,lineHeight:1.4}}>{b.d}</div></div></div>)}</div></div>
           <SourceHealthPanel items={sourceHealth} isMobile={isMobile}/>
           <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",gap:12,marginBottom:16}}><h2 style={{fontSize:22,fontWeight:700}}>Priložnosti za vas</h2><span style={{fontSize:12,color:c.t3}}>{filteredGrants.length} / {grantItems.length} aktualnih</span></div>
