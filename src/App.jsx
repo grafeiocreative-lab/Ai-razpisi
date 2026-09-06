@@ -74,7 +74,7 @@ function Score({value,size="sm"}){
 function DataRow({label,value}){
   return(<div style={{display:"flex",gap:16,padding:"10px 0",borderBottom:`1px solid ${c.border}40`,fontSize:13}}>
     <span style={{color:c.t3,minWidth:130,flexShrink:0}}>{label}</span>
-    <span style={{color:c.t1,fontWeight:500,flex:1,minWidth:0,wordBreak:"break-word",...tnum}}>{value}</span>
+    <span style={{color:c.t1,fontWeight:500,flex:1,minWidth:0,wordBreak:"break-word",textAlign:"right",...tnum}}>{value}</span>
   </div>);
 }
 function DataList({rows}){
@@ -728,6 +728,17 @@ function DeadlineCalendar({grantItems=[],onSelect}){
   </div>);
 }
 
+// Isti prag (14/3 dni) kot v computeAlerts spodaj, samo za vizualni poudarek
+// roka v vrstici razpisa/drawerju — ne vpliva na scoring ali opozorila.
+function deadlineUrgency(deadlineAt){
+  if(!deadlineAt)return{daysLeft:null,level:"none"};
+  const daysLeft=Math.ceil((new Date(deadlineAt).getTime()-Date.now())/86400000);
+  if(daysLeft<0)return{daysLeft,level:"none"};
+  if(daysLeft<=3)return{daysLeft,level:"urgent"};
+  if(daysLeft<=14)return{daysLeft,level:"soon"};
+  return{daysLeft,level:"far"};
+}
+
 /* ═══ OPOZORILA ════════════════════════════════════ */
 // Samo v aplikaciji, izračunano iz obstoječih podatkov (brez novega vira/e-pošte):
 // bližajoči se roki (≤14 dni) in novi razpisi (zadnjih 7 dni), oboje samo za ujemanje ≥60 %.
@@ -879,7 +890,7 @@ function CompanyProfile({maticna,grantItems=[],onGoToGrants}){
 }
 
 const fallbackGrants=[
-  {id:"fallback-1",title:"Digitalizacija poslovanja za MSP",funder:"Primer razpisa",status:"open",deadline:"—",amountLabel:"do 75.000 €",fundingType:"nepovratna sredstva",tags:["Digitalizacija","MSP"],icon:"digital",matchScore:72,topMatch:true,cofinancing:"do 60 %",region:"Slovenija",aiSummary:"Primer razpisa za prikaz v primeru, ko baza še ne vrne aktualnih razpisov.",checklist:[{label:"Regija ustreza",p:true},{label:"KMU pogoj",p:true},{label:"De minimis prostor",p:true}]},
+  {id:"fallback-1",title:"Digitalizacija poslovanja za MSP",funder:"Primer razpisa",status:"open",deadline:"brez roka",deadlineAt:null,amountLabel:"do 75.000 €",fundingType:"nepovratna sredstva",tags:["Digitalizacija","MSP"],icon:"digital",matchScore:72,topMatch:true,cofinancing:"do 60 %",region:"Slovenija",aiSummary:"Primer razpisa za prikaz v primeru, ko baza še ne vrne aktualnih razpisov.",officialText:null,hasAiSummary:false,sourceUrl:null,sourceName:"ni podatka",lastChecked:"ni preverjeno",qualityStatus:"needs_review",qualityLabel:"PREGLED",checklist:[{label:"Regija ustreza",p:true},{label:"KMU pogoj",p:true},{label:"De minimis prostor",p:true}]},
 ];
 
 function formatGrantDate(value){
@@ -1046,6 +1057,18 @@ function Tag({label,variant}){
   return(<span style={{fontSize:10,fontWeight:700,color:col,background:bg,border:`1px solid ${c.border}80`,padding:"3px 7px",borderRadius:radius.xs,whiteSpace:"nowrap"}}>{label}</span>);
 }
 
+// Sekundarna metapodatkovna vrstica razpisa (kategorije, vir, rok, preverjeno) —
+// navaden tekst namesto dodatnih badgeov, posamezen del je lahko poudarjen (npr. bližajoč se rok).
+function MetaLine({parts}){
+  const items=parts.filter(p=>p!==null&&p!==undefined&&p!=="");
+  return(<div style={{fontSize:12,color:c.t2,marginBottom:7,lineHeight:1.4}}>
+    {items.map((p,i)=>{
+      const seg=typeof p==="string"?{text:p}:p;
+      return(<span key={i} style={{color:seg.color||c.t2,fontWeight:seg.weight||400,...tnum}}>{seg.text}{i<items.length-1?" · ":""}</span>);
+    })}
+  </div>);
+}
+
 /* ═══════════════════════════════════════════════════ */
 /*  DASHBOARD                                         */
 /* ═══════════════════════════════════════════════════ */
@@ -1103,32 +1126,83 @@ function Dashboard({maticna,profile}){
   const matchedCount=grantItems.filter(g=>g.matchScore>=60).length;
   const alertsCount=computeAlerts(grantItems).total;
   const nav=[{icon:LayoutGrid,label:"Pregled"},{icon:FileText,label:"Razpisi"},{icon:Layers,label:"Priložnosti zame",badge:matchedCount||undefined},{icon:User,label:"Moj profil"},{icon:Bell,label:"Opozorila",badge:alertsCount||undefined},{icon:Calendar,label:"Koledar rokov"},{icon:Bot,label:"AI pomočnik"}];
+
+  // Kompakten pregled: samo obstoječi, že izračunani podatki — nič se ne izmišljuje.
+  // Če katerega podatka (še) ni na voljo, metrika izpade namesto lažnega "0".
+  const relevantForDeadline=grantItems.filter(g=>g.matchScore>=60&&g.deadlineAt&&new Date(g.deadlineAt).getTime()>=Date.now());
+  const nearestDeadlineGrant=relevantForDeadline.length?relevantForDeadline.reduce((a,b)=>new Date(a.deadlineAt)<new Date(b.deadlineAt)?a:b):null;
+  const refreshTimestamps=sourceHealth.map(s=>s.last_success?new Date(s.last_success).getTime():NaN).filter(Number.isFinite);
+  const lastRefreshDate=refreshTimestamps.length?new Date(Math.max(...refreshTimestamps)):null;
+  const fmtRefresh=d=>`${d.toLocaleDateString("sl-SI",{day:"2-digit",month:"2-digit"})} · ${d.toLocaleTimeString("sl-SI",{hour:"2-digit",minute:"2-digit"})}`;
+  const overviewMetrics=[
+    {label:"Priložnosti",value:matchedCount},
+    {label:"Opozorila",value:alertsCount},
+    {label:"Najbližji rok",value:nearestDeadlineGrant?formatGrantDate(nearestDeadlineGrant.deadlineAt):null},
+    {label:"Zadnja osvežitev",value:lastRefreshDate?fmtRefresh(lastRefreshDate):null},
+  ].filter(m=>m.value!==null&&m.value!==undefined);
+
+  // Filter vrstica: pokaži namig za podrsanje samo, če dejansko ne gre vse v širino.
+  const filterRef=useRef(null);
+  const[filterOverflow,setFilterOverflow]=useState(false);
+  useEffect(()=>{
+    const check=()=>{const el=filterRef.current;if(el)setFilterOverflow(el.scrollWidth>el.clientWidth+2);};
+    check();
+    window.addEventListener("resize",check);
+    return()=>window.removeEventListener("resize",check);
+  },[isMobile]);
   return(<div style={{display:"flex",flexDirection:isMobile?"column":"row",minHeight:"100vh",height:isMobile?"auto":"100vh",width:"100%",fontFamily:f,background:c.ivory,color:c.t1,overflow:isMobile?"visible":"hidden"}}>
-    <aside style={{width:isMobile?"100%":"clamp(200px,17vw,250px)",minWidth:isMobile?0:200,flexShrink:0,background:c.graphite,display:"flex",flexDirection:"column",padding:isMobile?"14px 12px":"28px 14px 20px",justifyContent:"space-between",position:isMobile?"sticky":"relative",top:0,zIndex:41}}><div><div style={{display:"flex",alignItems:"center",gap:12,paddingLeft:isMobile?4:10,marginBottom:isMobile?12:8}}><div style={{width:38,height:38,borderRadius:radius.sm,background:c.olive,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:c.white,flexShrink:0}}>AI</div><div><div style={{color:c.white,fontWeight:700,fontSize:16}}>RAZPISI</div><div style={{color:`${c.white}80`,fontSize:11}}>Pametno do sredstev</div></div></div><div style={{position:"relative"}}><nav style={{marginTop:isMobile?0:32,display:"flex",flexDirection:isMobile?"row":"column",gap:isMobile?4:1,overflowX:isMobile?"auto":"visible",paddingBottom:isMobile?2:0}}>{nav.map(n=>{const a=navSel===n.label;return(<div key={n.label} onClick={()=>{if(!n.soon)setNavSel(n.label);}} style={{display:"flex",alignItems:"center",gap:isMobile?8:11,padding:isMobile?"9px 10px":"10px 10px",borderLeft:isMobile?"none":`2px solid ${a?c.olive:"transparent"}`,borderBottom:isMobile?`2px solid ${a?c.olive:"transparent"}`:"none",cursor:n.soon?"default":"pointer",background:"transparent",flexShrink:0,opacity:n.soon?.55:1}}><n.icon size={17} strokeWidth={1.75} color={a?c.white:`${c.white}70`}/><span style={{fontSize:14,fontWeight:a?600:450,color:a?c.white:`${c.white}85`,flex:1,whiteSpace:"nowrap"}}>{isMobile&&n.label.length>12?n.label.split(" ")[0]:n.label}</span>{n.soon&&<span style={{color:`${c.white}70`,fontSize:9,fontWeight:700,letterSpacing:".05em"}}>KMALU</span>}{!n.soon&&n.badge&&<span style={{border:`1px solid ${a?c.white:c.olive}66`,color:a?c.white:c.olive,fontSize:11,fontWeight:700,borderRadius:radius.xs,padding:"1px 7px",...tnum}}>{n.badge}</span>}</div>);})}</nav>{isMobile&&<div style={{position:"absolute",top:0,right:0,bottom:2,width:26,background:`linear-gradient(90deg, transparent, ${c.graphite})`,pointerEvents:"none",display:"flex",alignItems:"center",justifyContent:"flex-end"}}><ChevronRight size={14} color={`${c.white}70`}/></div>}</div></div>{!isMobile&&<div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 10px"}}><div style={{width:34,height:34,borderRadius:radius.sm,background:c.olive,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:c.white,flexShrink:0}}>{(company?.company_name||"P").charAt(0)}</div><div style={{flex:1,minWidth:0}}><div style={{color:c.white,fontSize:13,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{company?.company_name||"Profil podjetja"}</div><div style={{color:`${c.white}55`,fontSize:11}}>Moj profil</div></div></div>}</aside>
+    <aside style={{width:isMobile?"100%":"clamp(200px,17vw,250px)",minWidth:isMobile?0:200,flexShrink:0,background:c.graphite,display:"flex",flexDirection:"column",padding:isMobile?"14px 12px":"28px 14px 20px",justifyContent:"space-between",position:isMobile?"sticky":"relative",top:0,zIndex:41}}><div><div style={{display:"flex",alignItems:"center",gap:12,paddingLeft:isMobile?4:10,marginBottom:isMobile?12:8}}><div style={{width:38,height:38,borderRadius:radius.sm,background:c.olive,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:c.white,flexShrink:0}}>AI</div><div><div style={{color:c.white,fontWeight:700,fontSize:16}}>RAZPISI</div><div style={{color:`${c.white}80`,fontSize:11}}>Pametno do sredstev</div></div></div><div style={{position:"relative"}}><nav style={{marginTop:isMobile?0:32,display:"flex",flexDirection:isMobile?"row":"column",gap:isMobile?4:1,overflowX:isMobile?"auto":"visible",paddingBottom:isMobile?2:0}}>{nav.map(n=>{const a=navSel===n.label;return(<div key={n.label} onClick={()=>{if(!n.soon)setNavSel(n.label);}} style={{display:"flex",alignItems:"center",gap:isMobile?8:11,padding:isMobile?"9px 10px":"10px 10px",borderLeft:isMobile?"none":`2px solid ${a?c.olive:"transparent"}`,borderBottom:isMobile?`2px solid ${a?c.olive:"transparent"}`:"none",cursor:n.soon?"default":"pointer",background:"transparent",flexShrink:0,opacity:n.soon?.55:1}}><n.icon size={17} strokeWidth={1.75} color={a?c.white:`${c.white}45`}/><span style={{fontSize:14,fontWeight:a?600:450,color:a?c.white:`${c.white}60`,flex:1,whiteSpace:"nowrap"}}>{isMobile&&n.label.length>12?n.label.split(" ")[0]:n.label}</span>{n.soon&&<span style={{color:`${c.white}70`,fontSize:9,fontWeight:700,letterSpacing:".05em"}}>KMALU</span>}{!n.soon&&n.badge&&<span style={{border:`1px solid ${a?c.white:c.olive}66`,color:a?c.white:c.olive,fontSize:11,fontWeight:700,borderRadius:radius.xs,padding:"1px 7px",...tnum}}>{n.badge}</span>}</div>);})}</nav>{isMobile&&<div style={{position:"absolute",top:0,right:0,bottom:2,width:26,background:`linear-gradient(90deg, transparent, ${c.graphite})`,pointerEvents:"none",display:"flex",alignItems:"center",justifyContent:"flex-end"}}><ChevronRight size={14} color={`${c.white}70`}/></div>}</div></div>{!isMobile&&<div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 10px"}}><div style={{width:34,height:34,borderRadius:radius.sm,background:c.olive,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:c.white,flexShrink:0}}>{(company?.company_name||"P").charAt(0)}</div><div style={{flex:1,minWidth:0}}><div style={{color:c.white,fontSize:13,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{company?.company_name||"Profil podjetja"}</div><div style={{color:`${c.white}55`,fontSize:11}}>Moj profil</div></div></div>}</aside>
     <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",overflow:isMobile?"visible":"hidden"}}>
-      <header style={{display:"flex",alignItems:"center",gap:12,padding:isMobile?"12px 16px":"16px 28px",background:c.white,borderBottom:`1px solid ${c.border}`}}><div style={{flex:1,display:"flex",alignItems:"center",gap:10,background:c.ivory,border:`1px solid ${c.border}`,borderRadius:radius.md,padding:"12px 16px",height:48,minWidth:0}}><Search size={18} color={c.t3}/><input placeholder="Išči po razpisih …" style={{border:"none",background:"transparent",outline:"none",fontSize:14,color:c.t1,fontFamily:f,flex:1,minWidth:0}}/></div><div onClick={()=>setNavSel("Opozorila")} style={{position:"relative",cursor:"pointer",flexShrink:0}}><Bell size={20} color={c.t2}/>{alertsCount>0&&<span style={{position:"absolute",top:-4,right:-4,width:16,height:16,borderRadius:"50%",background:c.coral,color:c.white,fontSize:9,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>{alertsCount>9?"9+":alertsCount}</span>}</div></header>
+      <header style={{display:"flex",alignItems:"center",gap:12,padding:isMobile?"12px 16px":"16px 28px",background:c.white,borderBottom:`1px solid ${c.border}`}}><div style={{flexGrow:isMobile?1:0,flexShrink:1,flexBasis:isMobile?"auto":"min(58%,780px)",display:"flex",alignItems:"center",gap:10,background:c.ivory,border:`1px solid ${c.border}`,borderRadius:radius.md,padding:"12px 16px",height:48,minWidth:0}}><Search size={18} color={c.t3}/><input placeholder="Išči po razpisih …" style={{border:"none",background:"transparent",outline:"none",fontSize:14,color:c.t1,fontFamily:f,flex:1,minWidth:0}}/></div>{!isMobile&&<div style={{flex:1}}/>}<div onClick={()=>setNavSel("Opozorila")} style={{position:"relative",cursor:"pointer",flexShrink:0}}><Bell size={20} color={c.t2}/>{alertsCount>0&&<span style={{position:"absolute",top:-4,right:-4,width:16,height:16,borderRadius:"50%",background:c.coral,color:c.white,fontSize:9,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>{alertsCount>9?"9+":alertsCount}</span>}</div></header>
       <div style={{flex:1,minWidth:0,display:"flex",flexDirection:isMobile?"column":"row",overflow:isMobile?"visible":"hidden"}}>
         {navSel==="Moj profil"&&<div style={{flex:1,overflowY:isMobile?"visible":"auto"}}><CompanyProfile maticna={maticna} grantItems={grantItems} onGoToGrants={()=>setNavSel("Pregled")}/></div>}
         {navSel==="Koledar rokov"&&<DeadlineCalendar grantItems={grantItems} onSelect={g=>{setSel(g);setShowD(true);}}/>}
         {navSel==="Opozorila"&&<AlertsView grantItems={grantItems} onSelect={g=>{setSel(g);setShowD(true);}}/>}
         {navSel==="AI pomočnik"&&<AiAssistantChat companyId={company?.id}/>}
         {navSel!=="Moj profil"&&navSel!=="Koledar rokov"&&navSel!=="Opozorila"&&navSel!=="AI pomočnik"&&<div style={{flex:1,minWidth:0,overflowY:isMobile?"visible":"auto",padding:isMobile?"18px 16px 28px":"28px 28px 40px"}}>
-          <div style={{background:c.white,border:`1px solid ${c.border}`,borderRadius:radius.lg,padding:isMobile?"24px 18px":"36px 40px",marginBottom:28}}><h1 style={{fontSize:isMobile?25:30,fontWeight:600,lineHeight:1.15,color:c.t1,maxWidth:580,fontFamily:fSerif}}>AI prevod birokratskega jezika.<br/><span style={{color:c.olive,fontFamily:f,fontWeight:800}}>Prave priložnosti.</span></h1><div style={{display:"flex",flexDirection:isMobile?"column":"row",gap:isMobile?14:32,marginTop:26}}>{[{I:FileText,t:"AI PREVOD",d:"Prevedeni v pogovorni jezik"},{I:Layers,t:"PAMETNO UJEMANJE",d:"Glede na vaš profil in cilje"},{I:Bell,t:"PRAVOČASNA OBVESTILA",d:"Nikoli več zamujenih rokov"}].map(b=><div key={b.t} style={{display:"flex",alignItems:"flex-start",gap:12,flex:1,minWidth:0}}><b.I size={18} strokeWidth={1.75} color={c.olive} style={{flexShrink:0,marginTop:2}}/><div style={{minWidth:0}}><div style={{fontSize:11,fontWeight:700,letterSpacing:".04em",color:c.t1,marginBottom:3}}>{b.t}</div><div style={{fontSize:13,color:c.t2,lineHeight:1.4}}>{b.d}</div></div></div>)}</div></div>
+          <div style={{marginBottom:28}}>
+            <div style={{fontSize:11,fontWeight:700,letterSpacing:".05em",color:c.t3,marginBottom:14}}>PREGLED</div>
+            <div style={{display:isMobile?"grid":"flex",gridTemplateColumns:isMobile?"1fr 1fr":undefined,rowGap:isMobile?18:0}}>
+              {overviewMetrics.map((m,i)=>(
+                <div key={m.label} style={{minWidth:0,flex:isMobile?undefined:1,paddingLeft:!isMobile&&i>0?24:0,paddingRight:!isMobile?24:0,borderLeft:!isMobile&&i>0?`1px solid ${c.border}`:"none"}}>
+                  <div style={{fontSize:isMobile?21:25,fontWeight:700,color:c.t1,lineHeight:1.15,...tnum}}>{m.value}</div>
+                  <div style={{fontSize:12,color:c.t2,marginTop:4}}>{m.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
           <SourceHealthPanel items={sourceHealth} isMobile={isMobile}/>
-          <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",gap:12,marginBottom:16}}><h2 style={{fontSize:20,fontWeight:700}}>Priložnosti za vas</h2><span style={{fontSize:12,color:c.t3,...tnum}}>{filteredGrants.length} / {grantItems.length} aktualnih</span></div>
-          <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:14}}>{grantFilters.map(fi=><button key={fi} onClick={()=>setAf(fi)} style={{padding:"7px 14px",borderRadius:radius.sm,border:"none",fontSize:13,fontWeight:af===fi?600:450,fontFamily:f,cursor:"pointer",background:af===fi?c.graphite:"transparent",color:af===fi?c.white:c.t2}}>{fi}</button>)}</div>
+          <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",gap:12,marginBottom:14}}><h2 style={{fontSize:20,fontWeight:700}}>Priložnosti za vas</h2><span style={{fontSize:12,color:c.t3,...tnum}}>{filteredGrants.length} / {grantItems.length} aktualnih</span></div>
+          <div style={{position:"relative",marginBottom:18}}>
+            <div ref={filterRef} style={{display:"flex",gap:18,overflowX:isMobile?"auto":"visible",flexWrap:isMobile?"nowrap":"wrap",rowGap:8,borderBottom:`1px solid ${c.border}`,paddingBottom:0}}>
+              {grantFilters.map(fi=>{const active=af===fi;return(
+                <button key={fi} onClick={()=>setAf(fi)} style={{padding:"0 0 9px",border:"none",borderBottom:`2px solid ${active?c.olive:"transparent"}`,background:"transparent",fontSize:13,fontWeight:active?600:450,fontFamily:f,cursor:"pointer",color:active?c.t1:c.t2,whiteSpace:"nowrap",flexShrink:0}}>{fi}</button>
+              );})}
+            </div>
+            {filterOverflow&&<div style={{position:"absolute",top:0,right:0,bottom:9,width:26,background:`linear-gradient(90deg, transparent, ${c.ivory})`,pointerEvents:"none"}}/>}
+          </div>
           {filteredGrants.length===0?<div style={{padding:"28px 22px",borderRadius:radius.md,border:`1px solid ${c.border}`,color:c.t2,fontSize:13}}>Za ta filter trenutno ni aktualnih razpisov.</div>:(
-          <div style={{borderTop:`1px solid ${c.border}`}}>{filteredGrants.map(g=>{const isSel=sel?.id===g.id;const isTop=filteredGrants[0]?.id===g.id;return(
+          <div style={{borderTop:`1px solid ${c.border}`}}>{filteredGrants.map(g=>{
+            const isSel=sel?.id===g.id;const isTop=filteredGrants[0]?.id===g.id;
+            const urgency=deadlineUrgency(g.deadlineAt);
+            const hasDeadline=g.deadline!=="brez roka";
+            return(
             <div key={g.id} onClick={()=>{setSel(g);setShowD(true);}} style={{display:"grid",gridTemplateColumns:isMobile?"minmax(0,1fr)":"64px minmax(0,1fr) auto 18px",alignItems:"center",gap:isMobile?10:20,padding:isMobile?"16px 4px":"16px 6px",borderBottom:`1px solid ${c.border}`,background:isSel?c.oliveLight:"transparent",cursor:"pointer"}}>
               {!isMobile&&<Score value={g.matchScore}/>}
               <div style={{minWidth:0}}>
                 {isTop&&<div style={{fontSize:10,fontWeight:700,letterSpacing:".05em",color:c.olive,marginBottom:5}}>TOP UJEMANJE</div>}
-                <div style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:4}}><GrantIcon type={g.icon}/><div style={{fontSize:15,fontWeight:600,color:c.t1,lineHeight:1.3,minWidth:0}}>{g.title}</div></div>
-                <div style={{fontSize:12,color:c.t2,marginBottom:7}}>{g.funder} · {g.sourceName} · preverjeno {g.lastChecked}</div>
-                <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{g.tags.map(t=><Tag key={t} label={t}/>)}<Tag label={g.fundingType.toUpperCase()} variant="quality"/>{g.status==="open"&&<Tag label="ODPRTO" variant="status"/>}{g.status==="upcoming"&&<Tag label="NAPOVEDAN" variant="deadline"/>}{g.deadline!=="brez roka"&&<Tag label={`ROK ${g.deadline}`} variant="deadline"/>}<Tag label={g.qualityLabel} variant="quality"/></div>
-                {isMobile&&<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,marginTop:10}}><Score value={g.matchScore}/><strong style={{fontSize:14,color:c.t1,...tnum}}>{g.amountLabel}</strong></div>}
+                <div style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:4}}><GrantIcon type={g.icon}/><div style={{fontSize:15,fontWeight:600,color:c.t1,lineHeight:1.3,minWidth:0,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{g.title}</div></div>
+                <MetaLine parts={[...g.tags,g.funder,`preverjeno ${g.lastChecked}`]}/>
+                <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                  {g.status==="open"&&<Tag label="ODPRTO" variant="status"/>}
+                  {g.status==="upcoming"&&<Tag label="NAPOVEDAN" variant="deadline"/>}
+                  <Tag label={g.fundingType.toUpperCase()} variant="quality"/>
+                  {hasDeadline&&urgency.level==="urgent"&&<Tag label={`ROK ${g.deadline}`} variant="deadline"/>}
+                  {g.qualityStatus!=="verified"&&<Tag label={g.qualityLabel} variant="quality"/>}
+                </div>
+                {isMobile&&<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,marginTop:10}}><Score value={g.matchScore}/><div style={{textAlign:"right"}}><div style={{fontSize:14,fontWeight:700,color:c.t1,...tnum}}>{g.amountLabel}</div>{hasDeadline&&<div style={{fontSize:11,marginTop:2,...tnum,color:urgency.level==="urgent"?c.coral:urgency.level==="soon"?c.amber:c.t2,fontWeight:urgency.level==="urgent"||urgency.level==="soon"?700:400}}>{g.deadline}</div>}</div></div>}
               </div>
-              {!isMobile&&<div style={{textAlign:"right",flexShrink:0}}><div style={{fontSize:14,fontWeight:700,color:c.t1,...tnum}}>{g.amountLabel}</div><div style={{fontSize:11,color:c.t2,marginTop:2,...tnum}}>{g.deadline!=="brez roka"?g.deadline:g.fundingType}</div></div>}
+              {!isMobile&&<div style={{textAlign:"right",flexShrink:0}}><div style={{fontSize:14,fontWeight:700,color:c.t1,...tnum}}>{g.amountLabel}</div><div style={{fontSize:11,marginTop:2,...tnum,color:urgency.level==="urgent"?c.coral:urgency.level==="soon"?c.amber:c.t2,fontWeight:urgency.level==="urgent"||urgency.level==="soon"?700:400}}>{hasDeadline?g.deadline:g.fundingType}</div></div>}
               {!isMobile&&<ChevronRight size={16} color={c.t3}/>}
             </div>
           );})}</div>
@@ -1142,13 +1216,24 @@ function Dashboard({maticna,profile}){
           const hasDocPair=sel.hasAiSummary&&officialRaw&&officialRaw!==aiText;
           const officialQuote=officialRaw.length>260?officialRaw.slice(0,260).replace(/\s+\S*$/,"")+" …":officialRaw;
           const overlay=!isMobile&&isCompact;
+          const selUrgency=deadlineUrgency(sel.deadlineAt);
+          const selHasDeadline=sel.deadline!=="brez roka";
+          // Največ 4 značke: status, do 2 ključni kategoriji, rok (samo če je res blizu) in
+          // "PREGLED" samo kadar gre za izjemo (podatek ni preverjen) — "PREVERJENO" se ne prikazuje več
+          // kot stalna značka na vsakem razpisu, ker privzetega stanja ni treba označevati.
+          const drawerBadges=[
+            sel.status==="open"?{key:"status",label:"ODPRTO",variant:"status"}:sel.status==="upcoming"?{key:"status",label:"NAPOVEDAN",variant:"deadline"}:null,
+            ...sel.tags.slice(0,2).map(t=>({key:t,label:t})),
+            selHasDeadline&&selUrgency.level==="urgent"?{key:"rok",label:`ROK ${sel.deadline}`,variant:"deadline"}:null,
+            sel.qualityStatus!=="verified"?{key:"quality",label:sel.qualityLabel,variant:"quality"}:null,
+          ].filter(Boolean).slice(0,4);
           return(<>
             {overlay&&<div onClick={()=>setShowD(false)} style={{position:"fixed",inset:0,background:"rgba(7,16,20,0.35)",zIndex:39}}/>}
             <aside style={{width:isMobile?"100%":overlay?"clamp(340px,88vw,440px)":420,minWidth:isMobile||overlay?0:420,flexShrink:0,position:overlay?"fixed":"static",top:overlay?0:"auto",right:overlay?0:"auto",bottom:overlay?0:"auto",zIndex:overlay?40:"auto",boxShadow:overlay?"-12px 0 32px rgba(7,16,20,0.16)":"none",borderLeft:isMobile||overlay?"none":`1px solid ${c.border}`,borderTop:isMobile?`1px solid ${c.border}`:"none",background:c.white,overflowY:isMobile?"visible":"auto",padding:isMobile?"22px 16px 36px":"24px 26px 40px"}}>
               <div style={{display:"flex",justifyContent:"space-between",marginBottom:18}}>{selectedIsTop?<span style={{background:c.olive,color:c.white,fontSize:10,fontWeight:700,padding:"4px 12px",borderRadius:radius.xs}}>TOP UJEMANJE</span>:<div/>}<div onClick={()=>setShowD(false)} style={{width:32,height:32,borderRadius:radius.sm,background:c.ivory,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}><X size={16} color={c.t2}/></div></div>
               <h3 style={{fontSize:isMobile?19:21,fontWeight:700,lineHeight:1.25,color:c.t1,marginBottom:6}}>{sel.title}</h3>
               <div style={{fontSize:13,color:c.t2,marginBottom:14}}>{sel.funder}</div>
-              <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:22}}>{sel.tags.map(t=><Tag key={t} label={t}/>)}{sel.status==="open"&&<Tag label="ODPRTO" variant="status"/>}{sel.status==="upcoming"&&<Tag label="NAPOVEDAN" variant="deadline"/>}{sel.deadline!=="brez roka"&&<Tag label={`ROK ${sel.deadline}`} variant="deadline"/>}<Tag label={sel.qualityLabel} variant="quality"/></div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:22}}>{drawerBadges.map(b=><Tag key={b.key} label={b.label} variant={b.variant}/>)}</div>
               <div style={{marginBottom:24}}>{hasDocPair?(
                 <DocumentTransition quoteSource="Uradni vir" quote={`„${officialQuote}"`} explanationLabel="AI razlaga" explanation={aiText}/>
               ):(
