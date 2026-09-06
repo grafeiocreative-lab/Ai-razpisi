@@ -231,11 +231,11 @@ function HowItWorks({go,onStart}){
 const plans=[
   {name:"Brezplačno",price:"0",period:"za vedno",desc:"Pregled razpisov brez personalizacije.",hl:false,cta:"Začni brezplačno",
    features:["Pregled vseh razpisov","Osnovni filtri","Iskanje po ključnih besedah"]},
-  {name:"Osnovno",price:"19",period:"/ mesec",desc:"Za podjetnike, ki želijo vedeti, kaj je na voljo.",hl:false,cta:"Preizkusi 14 dni",
+  {name:"Osnovno",price:"19",period:"/ mesec",desc:"Za podjetnike, ki želijo vedeti, kaj je na voljo.",hl:false,cta:"Naroči se",
    features:["Vse iz Brezplačnega","1 profil podjetja","Odstotek ujemanja za vsak razpis","Opozorila za bližajoče se roke","De minimis sledenje (JODP)"]},
-  {name:"Profesionalno",price:"49",period:"/ mesec",desc:"Za resen pristop k razpisom.",hl:true,cta:"Preizkusi 14 dni",
+  {name:"Profesionalno",price:"49",period:"/ mesec",desc:"Za resen pristop k razpisom.",hl:true,cta:"Naroči se",
    features:["Vse iz Osnovnega","AI prevod v pogovorni jezik","AI pomočnik (vprašaj karkoli)","Koledar rokov","Izvoz poročil (PDF)","Prioritetna podpora"]},
-  {name:"Za svetovalce",price:"99",period:"/ mesec",desc:"Upravljajte razpise za več strank hkrati.",hl:false,cta:"Kontaktirajte nas",
+  {name:"Za svetovalce",price:"99",period:"/ mesec",desc:"Upravljajte razpise za več strank hkrati.",hl:false,cta:"Naroči se",
    features:["Vse iz Profesionalnega","Do 10 profilov podjetij","Skupinski pregled","De minimis pregled za vse","API dostop","Osebna uvedba"]},
 ];
 
@@ -266,14 +266,18 @@ function Pricing({go,onStart}){
   const isMobile=useIsMobile();
   const sec={maxWidth:1080,margin:"0 auto",padding:isMobile?"0 16px":"0 32px"};
   const [openFaq,setOpenFaq]=useState(null);
+  const [recorded,setRecorded]=useState({});
+  const registerInterest=async(planName)=>{
+    if(recorded[planName])return;
+    setRecorded(r=>({...r,[planName]:true}));
+    try{await sb.from("plan_interest").insert({plan_name:planName});}
+    catch(err){console.error("Beleženje interesa ni uspelo:",err);}
+  };
 
   const faqs=[
     ["Ali je res brezplačno?","Da. Brezplačni paket omogoča pregled vseh razpisov in osnovne filtre brez omejitev. Ni časovne omejitve. Brez kreditne kartice."],
-    ["Kaj je vključeno v 14-dnevni preizkus?","Polni dostop do izbranega paketa. Preizkus se ne podaljša avtomatsko. Pred iztekom vas obvestimo."],
+    ["Kdaj bodo plačljivi paketi na voljo?","Trenutno še niso odprti za naročilo. Gumb 'Naroči se' zabeleži vaš interes, obvestimo vas takoj, ko bo naročanje mogoče."],
     ["Kako deluje de minimis sledenje?","Sistem pridobi podatke iz JODP registra Ministrstva za finance na podlagi matične številke. Podatki so informativni, priporočamo potrditev z lastno evidenco."],
-    ["Ali lahko zamenjam paket?","Kadarkoli. Nadgradnja je takojšnja, pri znižanju velja do konca tekočega obdobja."],
-    ["Kakšno plačevanje sprejemate?","Kartično plačilo (Visa, Mastercard) in SEPA direktna obremenitev. Račun prejmete po e-pošti."],
-    ["Ali lahko prekličem kadarkoli?","Da. Brez vezave, brez penala. Dostop velja do konca plačanega obdobja."],
   ];
 
   return(
@@ -283,7 +287,7 @@ function Pricing({go,onStart}){
       {/* Hero */}
       <section style={{...sec,padding:isMobile?"52px 16px 12px":"72px 32px 16px",textAlign:"center"}}>
         <h1 style={{fontSize:isMobile?34:42,fontWeight:700,lineHeight:1.1,color:c.t1,marginBottom:12}}>Cenik</h1>
-        <p style={{fontSize:17,color:c.t2,maxWidth:480,margin:"0 auto"}}>Brez vezave. Brez skritih stroškov. Prekličete kadarkoli.</p>
+        <p style={{fontSize:17,color:c.t2,maxWidth:480,margin:"0 auto"}}>Brezplačno za pregled razpisov. Plačljivi paketi prihajajo kmalu.</p>
       </section>
 
       {/* Cards */}
@@ -306,11 +310,11 @@ function Pricing({go,onStart}){
                   </div>
                 ))}
               </div>
-              <button onClick={onStart} style={{width:"100%",padding:"13px 0",borderRadius:12,border:p.hl?"none":`1.5px solid ${c.border}`,background:p.hl?c.olive:c.white,color:p.hl?c.white:c.t1,fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:f}}>{p.cta}</button>
+              <button onClick={()=>p.cta==="Začni brezplačno"?onStart():registerInterest(p.name)} disabled={p.cta!=="Začni brezplačno"&&recorded[p.name]} style={{width:"100%",padding:"13px 0",borderRadius:12,border:p.hl?"none":`1.5px solid ${c.border}`,background:p.hl?c.olive:c.white,color:p.hl?c.white:c.t1,fontSize:14,fontWeight:600,cursor:p.cta!=="Začni brezplačno"&&recorded[p.name]?"default":"pointer",fontFamily:f,opacity:p.cta!=="Začni brezplačno"&&recorded[p.name]?.6:1}}>{p.cta!=="Začni brezplačno"&&recorded[p.name]?"Zabeleženo ✓":p.cta}</button>
             </div>
           ))}
         </div>
-        <p style={{textAlign:"center",fontSize:13,color:c.t3,marginTop:20}}>Vsi zneski brez DDV. 14-dnevni brezplačni preizkus za plačljive pakete.</p>
+        <p style={{textAlign:"center",fontSize:13,color:c.t3,marginTop:20}}>Vsi zneski brez DDV. Plačljivi paketi še niso odprti za naročilo — "Naroči se" zabeleži vaš interes.</p>
       </section>
 
       {/* Comparison table */}
