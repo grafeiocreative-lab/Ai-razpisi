@@ -84,34 +84,37 @@ function HeroVideo({go,onStart,grantCount}){
   const isMobile=useIsMobile();
   const reducedMotion=usePrefersReducedMotion();
   const trustItems=[grantCount!==null?`${grantCount} razpisov`:"Aktualni razpisi","AI ujemanje","Pod 2 min do pregleda"];
+  // Mobile dobi namenski navpičen video (drug kader/crop), ne stisnjen desktop posnetek
+  const videoBase=isMobile?"/hero/hero-mobile":"/hero/hero-loop";
+  const posterSrc=isMobile?"/hero/hero-mobile-poster.jpg":"/hero/hero-poster.jpg";
   return(
-    <section style={{position:"relative",width:"100%",minHeight:isMobile?760:760,height:isMobile?760:"88vh",overflow:"hidden",display:"flex",alignItems:isMobile?"flex-start":"center"}}>
+    <section className={isMobile?"hero-mobile-section":undefined} style={{position:"relative",width:"100%",minHeight:isMobile?undefined:760,height:isMobile?undefined:"88vh",overflow:"hidden",display:"flex",alignItems:isMobile?"flex-start":"center"}}>
       {reducedMotion?(
-        <img src="/hero/hero-poster.jpg" alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:isMobile?"60% center":"50% center"}}/>
+        <img src={posterSrc} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:"50% center"}}/>
       ):(
-        <video autoPlay muted loop playsInline preload="auto" poster="/hero/hero-poster.jpg" aria-hidden="true" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:isMobile?"60% center":"50% center"}}>
-          <source src="/hero/hero-loop.webm" type="video/webm"/>
-          <source src="/hero/hero-loop.mp4" type="video/mp4"/>
+        <video autoPlay muted loop playsInline preload="auto" poster={posterSrc} aria-hidden="true" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:"50% center"}}>
+          <source src={`${videoBase}.webm`} type="video/webm"/>
+          <source src={`${videoBase}.mp4`} type="video/mp4"/>
         </video>
       )}
-      {/* Subtilen gradient samo čez levo stran (kjer je tekst) — desna polovica (zemljevid) ostane vidna */}
+      {/* Desktop: gradient samo čez levo stran. Mobile: močnejši overlay zgoraj (kjer je tekst), pojenja proti dnu. */}
       <div style={{position:"absolute",inset:0,background:isMobile
-        ?"linear-gradient(180deg, rgba(20,22,18,0.66) 0%, rgba(20,22,18,0.52) 42%, rgba(20,22,18,0.30) 100%)"
+        ?"linear-gradient(180deg, rgba(20,22,18,0.68) 0%, rgba(20,22,18,0.50) 30%, rgba(20,22,18,0.38) 45%, rgba(20,22,18,0.16) 70%, rgba(20,22,18,0.05) 100%)"
         :"linear-gradient(90deg, rgba(24,24,19,0.64) 0%, rgba(24,24,19,0.43) 40%, rgba(24,24,19,0.12) 65%, rgba(24,24,19,0) 100%)"
       }}/>
       {/* Nežen prehod v naslednjo (svetlo) sekcijo, brez ostrega roba — kratek in subtilen, ne "mlečna meglica" */}
       <div style={{position:"absolute",left:0,right:0,bottom:0,height:isMobile?40:56,background:`linear-gradient(180deg, rgba(20,22,18,0) 0%, ${c.ivory} 100%)`}}/>
 
-      <div style={{position:"relative",zIndex:2,width:"100%",maxWidth:isMobile?"none":680,padding:isMobile?"104px 20px 0":"0 clamp(32px,7vw,110px)"}}>
+      <div style={{position:"relative",zIndex:2,width:"100%",maxWidth:isMobile?"none":680,padding:isMobile?"calc(72px + env(safe-area-inset-top,0px)) 22px calc(28px + env(safe-area-inset-bottom,0px))":"0 clamp(32px,7vw,110px)"}}>
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:18}}>
-          <span style={{width:5,height:5,borderRadius:"50%",background:"#AEC98C"}}/>
+          <span style={{width:5,height:5,borderRadius:"50%",background:"#AEC98C",flexShrink:0}}/>
           <span style={{fontSize:12,fontWeight:600,letterSpacing:".14em",textTransform:"uppercase",color:"#AEC98C"}}>AI platforma za slovenske razpise</span>
         </div>
-        <h1 style={{fontFamily:fSerif,fontWeight:600,fontSize:isMobile?"clamp(40px,11vw,56px)":"clamp(36px,3.6vw,52px)",lineHeight:1.16,color:"#F8F6EF",margin:"0 0 20px"}}>Razpisi, ki ustrezajo<br/><span style={{color:"#C3DBA3"}}>vašemu podjetju.</span></h1>
-        <p style={{fontSize:isMobile?16:18,lineHeight:1.55,color:"#E4E1D6",maxWidth:540,margin:isMobile?"0 0 24px":"0 0 30px"}}>Vpišite matično številko. Sistem preveri vaše podjetje, de minimis prostor in pogoje razpisov ter izpostavi najbolj relevantne priložnosti.</p>
-        <div style={{display:"flex",flexWrap:"wrap",gap:14,marginBottom:isMobile?26:30}}>
-          <button onClick={onStart} className="hero-cta-primary" style={{display:"inline-flex",alignItems:"center",gap:10,height:56,padding:"0 30px",borderRadius:10,border:"none",background:c.olive,color:"#fff",fontSize:16,fontWeight:600,cursor:"pointer",fontFamily:f}}>Preveri razpise <ArrowRight size={18} className="hero-cta-arrow"/></button>
-          <button onClick={()=>go("kako")} className="hero-cta-secondary" style={{display:"inline-flex",alignItems:"center",height:56,padding:"0 26px",borderRadius:10,border:"1.5px solid rgba(247,244,236,0.4)",background:"rgba(247,244,236,0.06)",color:"#F7F4EC",fontSize:16,fontWeight:600,cursor:"pointer",fontFamily:f}}>Kako deluje</button>
+        <h1 style={{fontFamily:fSerif,fontWeight:600,fontSize:isMobile?"clamp(42px,12vw,58px)":"clamp(36px,3.6vw,52px)",lineHeight:isMobile?1.02:1.16,color:"#F8F6EF",margin:isMobile?"0 0 18px":"0 0 20px"}}>Razpisi, ki ustrezajo<br/><span style={{color:"#C3DBA3"}}>vašemu podjetju.</span></h1>
+        <p style={{fontSize:isMobile?16:18,lineHeight:isMobile?1.5:1.55,color:"#E4E1D6",maxWidth:540,margin:isMobile?"0 0 26px":"0 0 30px"}}>Vpišite matično številko. Sistem preveri vaše podjetje, de minimis prostor in pogoje razpisov ter izpostavi najbolj relevantne priložnosti.</p>
+        <div style={{display:"flex",flexDirection:isMobile?"column":"row",flexWrap:"wrap",gap:isMobile?12:14,marginBottom:isMobile?28:30}}>
+          <button onClick={onStart} className="hero-cta-primary" style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,height:isMobile?54:56,width:isMobile?"100%":"auto",padding:"0 30px",borderRadius:10,border:"none",background:c.olive,color:"#fff",fontSize:16,fontWeight:600,cursor:"pointer",fontFamily:f}}>Preveri razpise <ArrowRight size={18} className="hero-cta-arrow"/></button>
+          <button onClick={()=>go("kako")} className="hero-cta-secondary" style={{display:"flex",alignItems:"center",justifyContent:"center",height:isMobile?52:56,width:isMobile?"100%":"auto",padding:"0 26px",borderRadius:10,border:"1.5px solid rgba(247,244,236,0.4)",background:"rgba(247,244,236,0.06)",color:"#F7F4EC",fontSize:16,fontWeight:600,cursor:"pointer",fontFamily:f}}>Kako deluje</button>
         </div>
         <div style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:isMobile?10:14,opacity:.72,fontSize:13,color:"#E7E4DA"}}>
           {trustItems.map((t,i)=>(
@@ -123,6 +126,7 @@ function HeroVideo({go,onStart,grantCount}){
         </div>
       </div>
       <style>{`
+        .hero-mobile-section{min-height:760px;min-height:100vh;min-height:100svh;}
         .hero-cta-primary{transition:background .2s ease;}
         .hero-cta-primary:hover{background:#8FA968;}
         .hero-cta-primary:hover .hero-cta-arrow{transform:translateX(3px);}
@@ -164,7 +168,7 @@ function Landing({go,onStart}){
           <p style={{textAlign:"center",fontSize:15,color:c.t2,marginBottom:32}}>Brezplačno za pregled razpisov. Plačljivo, ko želite ujemanje in AI pomočnika.</p>
           <div style={{display:"flex",flexDirection:isMobile?"column":"row",justifyContent:"center",gap:24}}>
             {[["Brezplačno","0 €","Pregled razpisov"],["Osnovno","19 €/mes","AI ujemanje"],["Profesionalno","49 €/mes","Ujemanje in AI pomočnik"],["Svetovalci","99 €/mes","Več podjetij"]].map(([n,p,d])=>(
-              <div key={n} style={{padding:"20px 24px",borderRadius:14,border:`1px solid ${c.border}`,background:c.ivory,minWidth:150,textAlign:"center"}}><div style={{fontSize:11,fontWeight:700,color:c.t3,letterSpacing:".04em",marginBottom:8}}>{n}</div><div style={{fontSize:24,fontWeight:800,color:c.t1,marginBottom:4}}>{p}</div><div style={{fontSize:12,color:c.t2}}>{d}</div></div>
+              <div key={n} style={{padding:"20px 24px",borderRadius:14,border:`1px solid ${c.border}`,background:c.ivory,minWidth:150,textAlign:"center"}}><div style={{fontSize:11,fontWeight:700,color:c.t3,letterSpacing:".04em",marginBottom:8}}>{n}</div><div style={{fontSize:24,fontWeight:800,color:c.t1,marginBottom:4,whiteSpace:"nowrap"}}>{p}</div><div style={{fontSize:12,color:c.t2}}>{d}</div></div>
             ))}
           </div>
           <div style={{textAlign:"center",marginTop:28}}><a onClick={()=>go("cenik")} style={{fontSize:14,fontWeight:600,color:c.olive,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>Poglej celoten cenik <ArrowRight size={16}/></a></div>
@@ -390,7 +394,9 @@ function Pricing({go,onStart}){
       <section style={{background:c.white,padding:"64px 0"}}>
         <div style={sec}>
           <h2 style={{fontSize:28,fontWeight:700,color:c.t1,marginBottom:8,textAlign:"center"}}>Primerjava paketov</h2>
-          <p style={{textAlign:"center",fontSize:15,color:c.t2,marginBottom:36}}>Podroben pregled, kaj je vključeno v vsak paket.</p>
+          <p style={{textAlign:"center",fontSize:15,color:c.t2,marginBottom:isMobile?10:36}}>Podroben pregled, kaj je vključeno v vsak paket.</p>
+          {isMobile&&<div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,fontSize:12,color:c.t3,marginBottom:14}}>Podrsajte za več <ArrowRight size={13}/></div>}
+          <div style={{position:"relative"}}>
           <div style={{borderRadius:16,border:`1px solid ${c.border}`,overflowX:isMobile?"auto":"hidden"}}>
             {/* Header row */}
             <div style={{display:"grid",gridTemplateColumns:isMobile?"180px repeat(4,120px)":"1fr repeat(4,140px)",minWidth:isMobile?660:"auto",background:c.ivory,borderBottom:`1px solid ${c.border}`}}>
@@ -415,6 +421,8 @@ function Pricing({go,onStart}){
                 </div>
               );
             })}
+          </div>
+          {isMobile&&<div style={{position:"absolute",top:0,right:0,bottom:0,width:28,background:`linear-gradient(90deg, transparent, ${c.white})`,pointerEvents:"none",borderRadius:"0 16px 16px 0"}}/>}
           </div>
         </div>
       </section>
@@ -1028,7 +1036,7 @@ function Dashboard({maticna,profile}){
   const alertsCount=computeAlerts(grantItems).total;
   const nav=[{icon:LayoutGrid,label:"Pregled"},{icon:FileText,label:"Razpisi"},{icon:Sparkles,label:"Priložnosti zame",badge:matchedCount||undefined},{icon:User,label:"Moj profil"},{icon:Bell,label:"Opozorila",badge:alertsCount||undefined},{icon:Calendar,label:"Koledar rokov"},{icon:Bot,label:"AI pomočnik"}];
   return(<div style={{display:"flex",flexDirection:isMobile?"column":"row",minHeight:"100vh",height:isMobile?"auto":"100vh",width:"100%",fontFamily:f,background:c.ivory,color:c.t1,overflow:isMobile?"visible":"hidden"}}>
-    <aside style={{width:isMobile?"100%":250,minWidth:isMobile?0:250,background:c.graphite,display:"flex",flexDirection:"column",padding:isMobile?"14px 12px":"28px 16px 20px",justifyContent:"space-between",position:isMobile?"sticky":"static",top:0,zIndex:30}}><div><div style={{display:"flex",alignItems:"center",gap:12,paddingLeft:isMobile?4:12,marginBottom:isMobile?12:8}}><div style={{width:38,height:38,borderRadius:10,background:c.olive,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:c.white}}>AI</div><div><div style={{color:c.white,fontWeight:700,fontSize:16}}>RAZPISI</div><div style={{color:`${c.white}80`,fontSize:11}}>Pametno do sredstev</div></div></div><nav style={{marginTop:isMobile?0:32,display:"flex",flexDirection:isMobile?"row":"column",gap:4,overflowX:isMobile?"auto":"visible",paddingBottom:isMobile?2:0}}>{nav.map(n=>{const a=navSel===n.label;return(<div key={n.label} onClick={()=>{if(!n.soon)setNavSel(n.label);}} style={{display:"flex",alignItems:"center",gap:isMobile?8:12,padding:isMobile?"9px 12px":"11px 14px",borderRadius:14,cursor:n.soon?"default":"pointer",background:a?c.olive:"transparent",flexShrink:0,opacity:n.soon?.55:1}}><n.icon size={19} strokeWidth={1.75} color={a?c.white:`${c.white}85`}/><span style={{fontSize:14,fontWeight:a?600:450,color:a?c.white:`${c.white}85`,flex:1,whiteSpace:"nowrap"}}>{isMobile&&n.label.length>12?n.label.split(" ")[0]:n.label}</span>{!isMobile&&n.soon&&<span style={{background:`${c.white}15`,color:`${c.white}85`,fontSize:9,fontWeight:700,letterSpacing:".03em",borderRadius:8,padding:"2px 8px"}}>KMALU</span>}{!isMobile&&!n.soon&&n.badge&&<span style={{background:a?c.white:c.olive,color:a?c.olive:c.white,fontSize:11,fontWeight:700,borderRadius:8,padding:"2px 8px"}}>{n.badge}</span>}</div>);})}</nav></div>{!isMobile&&<div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px"}}><div style={{width:34,height:34,borderRadius:10,background:c.olive,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:c.white}}>{(company?.company_name||"P").charAt(0)}</div><div style={{flex:1,minWidth:0}}><div style={{color:c.white,fontSize:13,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{company?.company_name||"Profil podjetja"}</div><div style={{color:`${c.white}55`,fontSize:11}}>Moj profil</div></div></div>}</aside>
+    <aside style={{width:isMobile?"100%":250,minWidth:isMobile?0:250,background:c.graphite,display:"flex",flexDirection:"column",padding:isMobile?"14px 12px":"28px 16px 20px",justifyContent:"space-between",position:isMobile?"sticky":"static",top:0,zIndex:30}}><div><div style={{display:"flex",alignItems:"center",gap:12,paddingLeft:isMobile?4:12,marginBottom:isMobile?12:8}}><div style={{width:38,height:38,borderRadius:10,background:c.olive,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:c.white}}>AI</div><div><div style={{color:c.white,fontWeight:700,fontSize:16}}>RAZPISI</div><div style={{color:`${c.white}80`,fontSize:11}}>Pametno do sredstev</div></div></div><div style={{position:"relative"}}><nav style={{marginTop:isMobile?0:32,display:"flex",flexDirection:isMobile?"row":"column",gap:4,overflowX:isMobile?"auto":"visible",paddingBottom:isMobile?2:0}}>{nav.map(n=>{const a=navSel===n.label;return(<div key={n.label} onClick={()=>{if(!n.soon)setNavSel(n.label);}} style={{display:"flex",alignItems:"center",gap:isMobile?8:12,padding:isMobile?"9px 12px":"11px 14px",borderRadius:14,cursor:n.soon?"default":"pointer",background:a?c.olive:"transparent",flexShrink:0,opacity:n.soon?.55:1}}><n.icon size={19} strokeWidth={1.75} color={a?c.white:`${c.white}85`}/><span style={{fontSize:14,fontWeight:a?600:450,color:a?c.white:`${c.white}85`,flex:1,whiteSpace:"nowrap"}}>{isMobile&&n.label.length>12?n.label.split(" ")[0]:n.label}</span>{n.soon&&<span style={{background:`${c.white}15`,color:`${c.white}85`,fontSize:9,fontWeight:700,letterSpacing:".03em",borderRadius:8,padding:"2px 8px"}}>KMALU</span>}{!n.soon&&n.badge&&<span style={{background:a?c.white:c.olive,color:a?c.olive:c.white,fontSize:11,fontWeight:700,borderRadius:8,padding:"2px 8px"}}>{n.badge}</span>}</div>);})}</nav>{isMobile&&<div style={{position:"absolute",top:0,right:0,bottom:2,width:26,background:`linear-gradient(90deg, transparent, ${c.graphite})`,pointerEvents:"none",display:"flex",alignItems:"center",justifyContent:"flex-end"}}><ChevronRight size={14} color={`${c.white}70`}/></div>}</div></div>{!isMobile&&<div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px"}}><div style={{width:34,height:34,borderRadius:10,background:c.olive,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:c.white}}>{(company?.company_name||"P").charAt(0)}</div><div style={{flex:1,minWidth:0}}><div style={{color:c.white,fontSize:13,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{company?.company_name||"Profil podjetja"}</div><div style={{color:`${c.white}55`,fontSize:11}}>Moj profil</div></div></div>}</aside>
     <div style={{flex:1,display:"flex",flexDirection:"column",overflow:isMobile?"visible":"hidden"}}>
       <header style={{display:"flex",alignItems:"center",gap:12,padding:isMobile?"12px 16px":"16px 28px",background:c.white,borderBottom:`1px solid ${c.border}`}}><div style={{flex:1,display:"flex",alignItems:"center",gap:10,background:c.ivory,border:`1px solid ${c.border}`,borderRadius:12,padding:"12px 16px",height:48,minWidth:0}}><Search size={18} color={c.t3}/><input placeholder="Išči po razpisih …" style={{border:"none",background:"transparent",outline:"none",fontSize:14,color:c.t1,fontFamily:f,flex:1,minWidth:0}}/></div><div onClick={()=>setNavSel("Opozorila")} style={{position:"relative",cursor:"pointer"}}><Bell size={20} color={c.t2}/>{alertsCount>0&&<span style={{position:"absolute",top:-4,right:-4,width:16,height:16,borderRadius:"50%",background:c.coral,color:c.white,fontSize:9,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>{alertsCount>9?"9+":alertsCount}</span>}</div></header>
       <div style={{flex:1,display:"flex",flexDirection:isMobile?"column":"row",overflow:isMobile?"visible":"hidden"}}>
