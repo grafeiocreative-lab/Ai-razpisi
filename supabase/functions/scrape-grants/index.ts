@@ -228,7 +228,7 @@ async function summarizeGrant(
   apiKey: string,
   grant: { title: string; raw_summary: string | null; requirements: string | null; max_aid_amount: number | null; deadline_at: string | null }
 ): Promise<string> {
-  const systemPrompt = `Si pomočnik za razlago javnih razpisov v Sloveniji. Piši v slovenščini, naravno, brez uradniškega jezika. Uporabljaj slovenske tipografske konvencije: narekovaji „..." ne "...", vejica ali dvopičje namesto pomišljaja, decimalna vejica ne pika. Piši kratko in jedrnato.`;
+  const systemPrompt = `Si pomočnik za razlago javnih razpisov v Sloveniji. Piši v slovenščini, naravno, brez uradniškega jezika. Uporabljaj slovenske tipografske konvencije: narekovaji „..." ne "...", nikoli ne uporabljaj pomišljaja (– ali —) sredi povedi, uporabi vejico, dvopičje ali piko, decimalna vejica ne pika. Piši kratko in jedrnato.`;
 
   const znaniZnesek = grant.max_aid_amount ? `${Math.round(grant.max_aid_amount).toLocaleString("sl-SI")} €` : "ni navedeno v opisu";
   const znaniRok = grant.deadline_at ? new Date(grant.deadline_at).toLocaleDateString("sl-SI") : "ni naveden v opisu";
