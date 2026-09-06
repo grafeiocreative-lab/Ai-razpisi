@@ -62,6 +62,18 @@ Deno.serve(async (req) => {
     region: body.region || (company as Record<string,unknown>)?.region || null,
   };
 
+  // Shrani profil (interesi/velikost/de minimis prostor) nazaj v companies —
+  // teče s service_role, zato gre mimo RLS, ki bi to anon klicu iz brskalnika zavrnil.
+  const kmuToSizeClass: Record<string, string> = { MIKRO: "micro", MALO: "small", SREDNJE: "medium", VELIKO: "large" };
+  const profileUpdate: Record<string, unknown> = {};
+  if (Array.isArray(body.interests)) profileUpdate.interests = body.interests;
+  if (body.kmu) profileUpdate.size_class = kmuToSizeClass[body.kmu] || "small";
+  if (body.dm_free !== undefined) profileUpdate.dm_free = body.dm_free;
+  if (Object.keys(profileUpdate).length) {
+    const { error: profileError } = await supabase.from("companies").update(profileUpdate).eq("id", resolvedId);
+    if (profileError) console.error("Shranjevanje profila ni uspelo:", profileError.message);
+  }
+
   // Pridobi vse aktivne razpise
   const today = new Date().toISOString();
   const { data: grants, error: grantsError } = await supabase

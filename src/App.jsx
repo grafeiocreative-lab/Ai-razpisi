@@ -398,8 +398,9 @@ function Onboarding({onComplete,onBack}){
     // Shrani profil in sproži backend matching
     if(co?.id||ajpesResult?.company?.id){
       const cid=co?.id||ajpesResult?.company?.id;
+      // compute-matches shrani profil (interesi/velikost/de minimis) nazaj v companies sam —
+      // neposreden zapis iz brskalnika je bil tu prej in je padal na RLS (anon ni smel pisati).
       sb.functions.invoke("compute-matches",{body:{company_id:cid,interests:[...sel],kmu,dm_free:dmFree,region:co?.region||null}}).then(({error})=>{if(error)console.error("compute-matches ni uspel:",error);}).catch(err=>console.error("compute-matches ni uspel:",err));
-      sb.from("companies").update({interests:[...sel],size_class:({MIKRO:"micro",MALO:"small",SREDNJE:"medium",VELIKO:"large"})[kmu]||"small",dm_free:dmFree}).eq("id",cid).then(()=>{});
     }
   })();return()=>{active=false;};},[step]);
   useEffect(()=>{if(step!==2)return;setAjpesStatus("pending");setJodpStatus("pending");setAjpesResult(null);setJodpResult(null);const started=Date.now();const minShow=900;(async()=>{const[ajpes,jodp]=await Promise.allSettled([sb.functions.invoke("fetch-ajpes",{body:{registration_number:iv}}),sb.functions.invoke("fetch-jodp",{body:{registration_number:iv}})]);if(jodp.status==="fulfilled"){setJodpResult(jodp.value.data);setJodpStatus(jodp.value.data?.ok===false?"error":"ok");}else setJodpStatus("error");let company=ajpes.status==="fulfilled"?ajpes.value.data?.company:null;if(!company){const{data}=await sb.from("companies").select("*").eq("registration_number",iv).maybeSingle();company=data;}if(company){setAjpesResult({ok:true,company});setAjpesStatus("ok");}else setAjpesStatus("error");const wait=Math.max(0,minShow-(Date.now()-started));setTimeout(()=>setStep(3),wait);})();},[step]);
