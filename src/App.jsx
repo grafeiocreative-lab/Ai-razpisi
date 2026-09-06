@@ -712,10 +712,10 @@ function DeadlineCalendar({grantItems=[],onSelect}){
     <h3 style={{fontSize:15,fontWeight:700,color:c.t1,marginBottom:10}}>Naslednji roki</h3>
     {upcoming.length===0?<div style={{padding:"20px 18px",borderRadius:radius.md,background:c.white,border:`1px solid ${c.border}`,color:c.t2,fontSize:13}}>Ni prihajajočih rokov med aktualnimi razpisi.</div>:(
     <div style={{borderTop:`1px solid ${c.border}`}}>
-      {upcoming.map(g=>{const d=new Date(g.deadlineAt);return(<div key={g.id} onClick={()=>onSelect(g)} style={{display:"flex",alignItems:"center",gap:16,padding:"13px 2px",borderBottom:`1px solid ${c.border}`,cursor:"pointer"}}>
+      {upcoming.map(g=>{const d=new Date(g.deadlineAt);const urgency=deadlineUrgency(g.deadlineAt);const urgentColor=urgency.level==="urgent"?c.coral:urgency.level==="soon"?c.amber:c.t1;return(<div key={g.id} onClick={()=>onSelect(g)} style={{display:"flex",alignItems:"center",gap:16,padding:"13px 2px",borderBottom:`1px solid ${c.border}`,cursor:"pointer"}}>
         <div style={{width:40,textAlign:"center",flexShrink:0,...tnum}}>
-          <div style={{fontSize:17,fontWeight:700,color:c.t1,lineHeight:1.1}}>{d.getDate()}</div>
-          <div style={{fontSize:10,color:c.t3,textTransform:"uppercase"}}>{d.toLocaleDateString("sl-SI",{month:"short"})}</div>
+          <div style={{fontSize:17,fontWeight:700,color:urgentColor,lineHeight:1.1}}>{d.getDate()}</div>
+          <div style={{fontSize:10,color:urgency.level==="urgent"||urgency.level==="soon"?urgentColor:c.t3,textTransform:"uppercase"}}>{d.toLocaleDateString("sl-SI",{month:"short"})}</div>
         </div>
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:14,fontWeight:600,color:c.t1,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.title}</div>
