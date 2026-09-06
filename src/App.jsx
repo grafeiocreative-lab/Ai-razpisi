@@ -27,20 +27,38 @@ function useIsMobile(){
   return isMobile;
 }
 
+function usePrefersReducedMotion(){
+  const get=()=>typeof window!=="undefined"&&window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const[reduced,setReduced]=useState(get);
+  useEffect(()=>{if(typeof window==="undefined")return;const mq=window.matchMedia("(prefers-reduced-motion: reduce)");const on=()=>setReduced(mq.matches);on();mq.addEventListener?.("change",on);return()=>mq.removeEventListener?.("change",on);},[]);
+  return reduced;
+}
+
 /* ═══ SHARED NAV ═══════════════════════════════════ */
-function Nav({page,go,onStart}){
+function Nav({page,go,onStart,overlay=false}){
   const isMobile=useIsMobile();
+  const[scrolled,setScrolled]=useState(!overlay);
+  useEffect(()=>{
+    if(!overlay)return;
+    const onScroll=()=>setScrolled(window.scrollY>60);
+    onScroll();
+    window.addEventListener("scroll",onScroll,{passive:true});
+    return()=>window.removeEventListener("scroll",onScroll);
+  },[overlay]);
+  const solid=!overlay||scrolled;
+  const linkColor=solid?c.t2:"#F7F4ECb3";
+  const logoColor=solid?c.t1:"#F7F4EC";
   return(
-    <nav style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,padding:isMobile?"14px 16px":"18px 40px",background:`${c.white}cc`,backdropFilter:"blur(12px)",borderBottom:`1px solid ${c.border}50`,position:"sticky",top:0,zIndex:50,fontFamily:f}}>
+    <nav style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,padding:isMobile?"14px 16px":"18px 40px",background:solid?`${c.white}cc`:"transparent",backdropFilter:solid?"blur(12px)":"none",borderBottom:solid?`1px solid ${c.border}50`:"1px solid transparent",transition:"background .3s ease, border-color .3s ease",position:overlay?"fixed":"sticky",top:0,left:0,right:0,zIndex:50,fontFamily:f}}>
       <div style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer"}} onClick={()=>go("landing")}>
         <div style={{width:36,height:36,borderRadius:10,background:c.olive,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:c.white}}>AI</div>
-        <span style={{fontSize:18,fontWeight:700,color:c.t1}}>RAZPISI</span>
+        <span style={{fontSize:18,fontWeight:700,color:logoColor,transition:"color .3s ease"}}>RAZPISI</span>
       </div>
       <div style={{display:"flex",alignItems:"center",gap:isMobile?10:32}}>
         {[["kako","Kako deluje"],["cenik","Cenik"]].map(([k,l])=>(
-          <a key={k} onClick={()=>go(k)} style={{display:isMobile&&k==="kako"?"none":"inline",fontSize:14,color:page===k?c.olive:c.t2,fontWeight:page===k?600:500,cursor:"pointer",textDecoration:"none",borderBottom:page===k?`2px solid ${c.olive}`:"2px solid transparent",paddingBottom:2}}>{l}</a>
+          <a key={k} onClick={()=>go(k)} style={{display:isMobile&&k==="kako"?"none":"inline",fontSize:14,color:page===k?c.olive:linkColor,fontWeight:page===k?600:500,cursor:"pointer",textDecoration:"none",borderBottom:page===k?`2px solid ${c.olive}`:"2px solid transparent",paddingBottom:2,transition:"color .3s ease"}}>{l}</a>
         ))}
-        <button onClick={onStart} style={{padding:isMobile?"10px 14px":"10px 24px",borderRadius:10,border:"none",background:c.graphite,color:c.white,fontSize:isMobile?13:14,fontWeight:600,cursor:"pointer",fontFamily:f,whiteSpace:"nowrap"}}>{isMobile?"Začni":"Začni brezplačno"}</button>
+        <button onClick={onStart} style={{padding:isMobile?"10px 14px":"10px 24px",borderRadius:10,border:"none",background:solid?c.graphite:c.olive,color:c.white,fontSize:isMobile?13:14,fontWeight:600,cursor:"pointer",fontFamily:f,whiteSpace:"nowrap",transition:"background .3s ease"}}>{isMobile?"Začni":"Začni brezplačno"}</button>
       </div>
     </nav>
   );
@@ -57,6 +75,63 @@ function Footer(){
 }
 
 /* ═══════════════════════════════════════════════════ */
+/*  HERO (video ozadje)                               */
+/* ═══════════════════════════════════════════════════ */
+function HeroVideo({go,onStart,grantCount}){
+  const isMobile=useIsMobile();
+  const reducedMotion=usePrefersReducedMotion();
+  const trustItems=[grantCount!==null?`${grantCount} razpisov`:"Aktualni razpisi","AI ujemanje","Pod 2 min do pregleda"];
+  return(
+    <section style={{position:"relative",width:"100%",minHeight:isMobile?760:760,height:isMobile?760:"88vh",overflow:"hidden",display:"flex",alignItems:isMobile?"flex-start":"center"}}>
+      {reducedMotion?(
+        <img src="/hero/hero-poster.jpg" alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:isMobile?"60% center":"50% center"}}/>
+      ):(
+        <video autoPlay muted loop playsInline preload="auto" poster="/hero/hero-poster.jpg" aria-hidden="true" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:isMobile?"60% center":"50% center"}}>
+          <source src="/hero/hero-loop.webm" type="video/webm"/>
+          <source src="/hero/hero-loop.mp4" type="video/mp4"/>
+        </video>
+      )}
+      {/* Subtilen gradient samo čez levo stran (kjer je tekst) — desna polovica (zemljevid) ostane vidna */}
+      <div style={{position:"absolute",inset:0,background:isMobile
+        ?"linear-gradient(180deg, rgba(20,22,18,0.66) 0%, rgba(20,22,18,0.52) 42%, rgba(20,22,18,0.30) 100%)"
+        :"linear-gradient(90deg, rgba(20,22,18,0.58) 0%, rgba(20,22,18,0.34) 36%, rgba(20,22,18,0.12) 58%, rgba(20,22,18,0) 76%)"
+      }}/>
+      {/* Nežen prehod v naslednjo (svetlo) sekcijo, brez ostrega roba */}
+      <div style={{position:"absolute",left:0,right:0,bottom:0,height:isMobile?70:110,background:`linear-gradient(180deg, rgba(20,22,18,0) 0%, ${c.ivory} 100%)`}}/>
+
+      <div style={{position:"relative",zIndex:2,width:"100%",maxWidth:isMobile?"none":580,padding:isMobile?"104px 20px 0":"0 clamp(32px,7vw,110px)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:18}}>
+          <span style={{width:5,height:5,borderRadius:"50%",background:"#AEC98C"}}/>
+          <span style={{fontSize:12,fontWeight:600,letterSpacing:".14em",textTransform:"uppercase",color:"#AEC98C"}}>AI platforma za slovenske razpise</span>
+        </div>
+        <h1 style={{fontFamily:fSerif,fontWeight:600,fontSize:isMobile?"clamp(40px,11vw,56px)":"clamp(48px,5vw,76px)",lineHeight:1.1,color:"#F8F6EF",margin:"0 0 20px"}}>Razpisi, ki ustrezajo<br/><span style={{color:c.olive}}>vašemu podjetju.</span></h1>
+        <p style={{fontSize:isMobile?16:18,lineHeight:1.55,color:"#E4E1D6",maxWidth:540,margin:isMobile?"0 0 24px":"0 0 30px"}}>Vpišite matično številko. Sistem preveri podatke podjetja, de minimis prostor in pogoje razpisov ter izpostavi priložnosti, ki so za vas najbolj relevantne.</p>
+        <div style={{display:"flex",flexWrap:"wrap",gap:14,marginBottom:isMobile?26:30}}>
+          <button onClick={onStart} className="hero-cta-primary" style={{display:"inline-flex",alignItems:"center",gap:10,height:56,padding:"0 30px",borderRadius:10,border:"none",background:c.olive,color:"#fff",fontSize:16,fontWeight:600,cursor:"pointer",fontFamily:f}}>Preveri razpise <ArrowRight size={18} className="hero-cta-arrow"/></button>
+          <button onClick={()=>go("kako")} className="hero-cta-secondary" style={{display:"inline-flex",alignItems:"center",height:56,padding:"0 26px",borderRadius:10,border:"1.5px solid rgba(247,244,236,0.4)",background:"rgba(247,244,236,0.06)",color:"#F7F4EC",fontSize:16,fontWeight:600,cursor:"pointer",fontFamily:f}}>Kako deluje</button>
+        </div>
+        <div style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:isMobile?10:14,opacity:.72,fontSize:13,color:"#E7E4DA"}}>
+          {trustItems.map((t,i)=>(
+            <span key={t} style={{display:"flex",alignItems:"center",gap:isMobile?10:14}}>
+              {i>0&&<span aria-hidden="true" style={{opacity:.6}}>•</span>}
+              <span>{t}</span>
+            </span>
+          ))}
+        </div>
+      </div>
+      <style>{`
+        .hero-cta-primary{transition:background .2s ease;}
+        .hero-cta-primary:hover{background:#8FA968;}
+        .hero-cta-primary:hover .hero-cta-arrow{transform:translateX(3px);}
+        .hero-cta-arrow{transition:transform .2s ease;}
+        .hero-cta-secondary{transition:background .2s ease,border-color .2s ease;}
+        .hero-cta-secondary:hover{background:rgba(247,244,236,0.14);border-color:rgba(247,244,236,0.7);}
+      `}</style>
+    </section>
+  );
+}
+
+/* ═══════════════════════════════════════════════════ */
 /*  LANDING PAGE                                      */
 /* ═══════════════════════════════════════════════════ */
 function Landing({go,onStart}){
@@ -66,17 +141,8 @@ function Landing({go,onStart}){
   useEffect(()=>{let active=true;(async()=>{const{count}=await sb.from("grants").select("id",{count:"exact",head:true}).in("status",["open","upcoming"]).ilike("source_url","http%");if(active&&typeof count==="number")setGrantCount(count);})();return()=>{active=false;};},[]);
   return(
     <div style={{fontFamily:f,color:c.t1,background:c.ivory}}>
-      <Nav page="landing" go={go} onStart={onStart}/>
-      <section style={{...sec,padding:isMobile?"56px 16px 48px":"100px 32px 80px",textAlign:"center"}}>
-        <div style={{display:"inline-flex",alignItems:"center",gap:8,padding:"6px 16px",borderRadius:8,background:c.oliveLight,border:`1px solid ${c.olive}20`,marginBottom:24}}><Sparkles size={14} color={c.olive}/><span style={{fontSize:13,fontWeight:600,color:c.olive}}>AI platforma za slovenske razpise</span></div>
-        <h1 style={{fontSize:isMobile?36:52,fontWeight:600,lineHeight:1.1,color:c.t1,marginBottom:16,maxWidth:720,margin:"0 auto 16px",fontFamily:fSerif}}>AI prevod birokratskega jezika. <span style={{color:c.olive,fontFamily:f,fontWeight:800}}>Prave priložnosti.</span></h1>
-        <p style={{fontSize:isMobile?16:18,color:c.t2,lineHeight:1.6,maxWidth:540,margin:"0 auto 36px"}}>Vpišite matično številko. Sistem pridobi podatke, preveri de minimis stanje in predlaga razpise, ki ustrezajo vašemu podjetju.</p>
-        <div style={{display:"flex",flexDirection:isMobile?"column":"row",gap:12,justifyContent:"center"}}>
-          <button onClick={onStart} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,padding:"16px 36px",borderRadius:14,border:"none",background:c.olive,color:c.white,fontSize:16,fontWeight:700,cursor:"pointer",fontFamily:f,boxShadow:`0 4px 24px ${c.olive}35`}}>Preveri razpise <ArrowRight size={20}/></button>
-          <button onClick={()=>go("kako")} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"16px 28px",borderRadius:14,border:`1.5px solid ${c.border}`,background:c.white,color:c.t1,fontSize:16,fontWeight:600,cursor:"pointer",fontFamily:f}}>Kako deluje</button>
-        </div>
-        <div style={{display:"flex",flexDirection:isMobile?"column":"row",justifyContent:"center",gap:isMobile?10:40,marginTop:48,opacity:.5}}>{[grantCount!==null?`${grantCount} aktualnih razpisov`:"Aktualni razpisi","Podatki iz AJPES, JODP in EU virov","Rezultat v manj kot 2 minutah"].map(t=><span key={t} style={{fontSize:13,fontWeight:500,color:c.t2}}>{t}</span>)}</div>
-      </section>
+      <Nav page="landing" go={go} onStart={onStart} overlay/>
+      <HeroVideo go={go} onStart={onStart} grantCount={grantCount}/>
 
       {/* Before/After teaser */}
       <section style={{...sec,padding:isMobile?"36px 16px 56px":"60px 32px 80px"}}>
