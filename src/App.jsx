@@ -571,6 +571,60 @@ function DeadlineCalendar({grantItems=[],onSelect}){
   </div>);
 }
 
+/* ═══ OPOZORILA ════════════════════════════════════ */
+// Samo v aplikaciji, izračunano iz obstoječih podatkov (brez novega vira/e-pošte):
+// bližajoči se roki (≤14 dni) in novi razpisi (zadnjih 7 dni), oboje samo za ujemanje ≥60 %.
+function computeAlerts(grantItems=[]){
+  const now=Date.now(),DAY=86400000;
+  const relevant=grantItems.filter(g=>g.matchScore>=60);
+
+  const deadlineSoon=relevant
+    .filter(g=>g.deadlineAt)
+    .map(g=>({...g,daysLeft:Math.ceil((new Date(g.deadlineAt).getTime()-now)/DAY)}))
+    .filter(g=>g.daysLeft>=0&&g.daysLeft<=14)
+    .sort((a,b)=>a.daysLeft-b.daysLeft);
+
+  const newMatches=relevant
+    .filter(g=>g.createdAt&&(now-new Date(g.createdAt).getTime())<=7*DAY)
+    .sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+
+  return{deadlineSoon,newMatches,total:deadlineSoon.length+newMatches.length};
+}
+
+function AlertsView({grantItems=[],onSelect}){
+  const isMobile=useIsMobile();
+  const{deadlineSoon,newMatches,total}=computeAlerts(grantItems);
+
+  const Row=({g,badge,badgeColor})=>(
+    <div onClick={()=>onSelect(g)} style={{display:"flex",alignItems:"center",gap:14,padding:"14px 18px",borderRadius:14,border:`1px solid ${c.border}`,background:c.white,cursor:"pointer"}}>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:14,fontWeight:600,color:c.t1,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.title}</div>
+        <div style={{fontSize:12,color:c.t2}}>{g.funder}</div>
+      </div>
+      <span style={{fontSize:11,fontWeight:700,color:badgeColor,background:`${badgeColor}18`,padding:"4px 10px",borderRadius:6,flexShrink:0,whiteSpace:"nowrap"}}>{badge}</span>
+      <ChevronRight size={16} color={c.t3}/>
+    </div>
+  );
+  const empty=(text)=><div style={{padding:"20px 18px",borderRadius:14,background:c.white,border:`1px solid ${c.border}`,color:c.t2,fontSize:13}}>{text}</div>;
+
+  return(<div style={{flex:1,overflowY:isMobile?"visible":"auto",padding:isMobile?"18px 16px 28px":"28px 28px 40px"}}>
+    <div style={{marginBottom:28}}>
+      <h2 style={{fontSize:22,fontWeight:700,color:c.t1,marginBottom:4}}>Opozorila</h2>
+      <p style={{fontSize:13,color:c.t2}}>{total>0?`${total} opozoril za razpise z ujemanjem nad 60 %.`:"Trenutno ni opozoril za vaš profil."}</p>
+    </div>
+    <h3 style={{fontSize:15,fontWeight:700,color:c.t1,marginBottom:14}}>Bližajoči se roki</h3>
+    <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:32}}>
+      {deadlineSoon.length===0?empty("Noben ujemajoč razpis nima roka v naslednjih 14 dneh."):
+        deadlineSoon.map(g=><Row key={g.id} g={g} badge={g.daysLeft===0?"DANES":g.daysLeft===1?"JUTRI":`ŠE ${g.daysLeft} DNI`} badgeColor={g.daysLeft<=3?c.coral:c.amber}/>)}
+    </div>
+    <h3 style={{fontSize:15,fontWeight:700,color:c.t1,marginBottom:14}}>Novi ujemajoči razpisi</h3>
+    <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      {newMatches.length===0?empty("Zadnjih 7 dni ni novih ujemajočih razpisov."):
+        newMatches.map(g=><Row key={g.id} g={g} badge="NOVO" badgeColor={c.olive}/>)}
+    </div>
+  </div>);
+}
+
 /* ═══ COMPANY PROFILE ══════════════════════════════ */
 function CompanyProfile({maticna,grantItems=[],onGoToGrants}){
   const isMobile=useIsMobile();
@@ -713,6 +767,7 @@ function mapGrant(row,profile){
     status,
     deadline:formatGrantDate(row.deadline_at),
     deadlineAt:row.deadline_at,
+    createdAt:row.created_at,
     amountLabel:formatGrantAmount(row.max_aid_amount),
     fundingType,
     tags:tags.length?tags:["Razpis"],
@@ -833,15 +888,17 @@ function Dashboard({maticna,profile}){
   const filteredGrants=filterGrants(grantItems,af);
   const selectedIsTop=filteredGrants[0]?.id===sel?.id;
   const matchedCount=grantItems.filter(g=>g.matchScore>=60).length;
-  const nav=[{icon:LayoutGrid,label:"Pregled"},{icon:FileText,label:"Razpisi"},{icon:Sparkles,label:"Priložnosti zame",badge:matchedCount||undefined},{icon:User,label:"Moj profil"},{icon:Bell,label:"Opozorila",soon:true},{icon:Calendar,label:"Koledar rokov"},{icon:Bot,label:"AI pomočnik",soon:true}];
+  const alertsCount=computeAlerts(grantItems).total;
+  const nav=[{icon:LayoutGrid,label:"Pregled"},{icon:FileText,label:"Razpisi"},{icon:Sparkles,label:"Priložnosti zame",badge:matchedCount||undefined},{icon:User,label:"Moj profil"},{icon:Bell,label:"Opozorila",badge:alertsCount||undefined},{icon:Calendar,label:"Koledar rokov"},{icon:Bot,label:"AI pomočnik",soon:true}];
   return(<div style={{display:"flex",flexDirection:isMobile?"column":"row",minHeight:"100vh",height:isMobile?"auto":"100vh",width:"100%",fontFamily:f,background:c.ivory,color:c.t1,overflow:isMobile?"visible":"hidden"}}>
     <aside style={{width:isMobile?"100%":250,minWidth:isMobile?0:250,background:c.graphite,display:"flex",flexDirection:"column",padding:isMobile?"14px 12px":"28px 16px 20px",justifyContent:"space-between",position:isMobile?"sticky":"static",top:0,zIndex:30}}><div><div style={{display:"flex",alignItems:"center",gap:12,paddingLeft:isMobile?4:12,marginBottom:isMobile?12:8}}><div style={{width:38,height:38,borderRadius:10,background:c.olive,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:c.white}}>AI</div><div><div style={{color:c.white,fontWeight:700,fontSize:16}}>RAZPISI</div><div style={{color:`${c.white}80`,fontSize:11}}>Pametno do sredstev</div></div></div><nav style={{marginTop:isMobile?0:32,display:"flex",flexDirection:isMobile?"row":"column",gap:4,overflowX:isMobile?"auto":"visible",paddingBottom:isMobile?2:0}}>{nav.map(n=>{const a=navSel===n.label;return(<div key={n.label} onClick={()=>{if(!n.soon)setNavSel(n.label);}} style={{display:"flex",alignItems:"center",gap:isMobile?8:12,padding:isMobile?"9px 12px":"11px 14px",borderRadius:14,cursor:n.soon?"default":"pointer",background:a?c.olive:"transparent",flexShrink:0,opacity:n.soon?.55:1}}><n.icon size={19} strokeWidth={1.75} color={a?c.white:`${c.white}85`}/><span style={{fontSize:14,fontWeight:a?600:450,color:a?c.white:`${c.white}85`,flex:1,whiteSpace:"nowrap"}}>{isMobile&&n.label.length>12?n.label.split(" ")[0]:n.label}</span>{!isMobile&&n.soon&&<span style={{background:`${c.white}15`,color:`${c.white}85`,fontSize:9,fontWeight:700,letterSpacing:".03em",borderRadius:8,padding:"2px 8px"}}>KMALU</span>}{!isMobile&&!n.soon&&n.badge&&<span style={{background:a?c.white:c.olive,color:a?c.olive:c.white,fontSize:11,fontWeight:700,borderRadius:8,padding:"2px 8px"}}>{n.badge}</span>}</div>);})}</nav></div>{!isMobile&&<div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px"}}><div style={{width:34,height:34,borderRadius:10,background:c.olive,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:c.white}}>{(company?.company_name||"P").charAt(0)}</div><div style={{flex:1,minWidth:0}}><div style={{color:c.white,fontSize:13,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{company?.company_name||"Profil podjetja"}</div><div style={{color:`${c.white}55`,fontSize:11}}>Moj profil</div></div></div>}</aside>
     <div style={{flex:1,display:"flex",flexDirection:"column",overflow:isMobile?"visible":"hidden"}}>
-      <header style={{display:"flex",alignItems:"center",gap:12,padding:isMobile?"12px 16px":"16px 28px",background:c.white,borderBottom:`1px solid ${c.border}`}}><div style={{flex:1,display:"flex",alignItems:"center",gap:10,background:c.ivory,border:`1px solid ${c.border}`,borderRadius:12,padding:"12px 16px",height:48,minWidth:0}}><Search size={18} color={c.t3}/><input placeholder="Išči po razpisih …" style={{border:"none",background:"transparent",outline:"none",fontSize:14,color:c.t1,fontFamily:f,flex:1,minWidth:0}}/></div><div style={{position:"relative"}}><Bell size={20} color={c.t2}/></div></header>
+      <header style={{display:"flex",alignItems:"center",gap:12,padding:isMobile?"12px 16px":"16px 28px",background:c.white,borderBottom:`1px solid ${c.border}`}}><div style={{flex:1,display:"flex",alignItems:"center",gap:10,background:c.ivory,border:`1px solid ${c.border}`,borderRadius:12,padding:"12px 16px",height:48,minWidth:0}}><Search size={18} color={c.t3}/><input placeholder="Išči po razpisih …" style={{border:"none",background:"transparent",outline:"none",fontSize:14,color:c.t1,fontFamily:f,flex:1,minWidth:0}}/></div><div onClick={()=>setNavSel("Opozorila")} style={{position:"relative",cursor:"pointer"}}><Bell size={20} color={c.t2}/>{alertsCount>0&&<span style={{position:"absolute",top:-4,right:-4,width:16,height:16,borderRadius:"50%",background:c.coral,color:c.white,fontSize:9,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>{alertsCount>9?"9+":alertsCount}</span>}</div></header>
       <div style={{flex:1,display:"flex",flexDirection:isMobile?"column":"row",overflow:isMobile?"visible":"hidden"}}>
         {navSel==="Moj profil"&&<div style={{flex:1,overflowY:isMobile?"visible":"auto"}}><CompanyProfile maticna={maticna} grantItems={grantItems} onGoToGrants={()=>setNavSel("Pregled")}/></div>}
         {navSel==="Koledar rokov"&&<DeadlineCalendar grantItems={grantItems} onSelect={g=>{setSel(g);setShowD(true);}}/>}
-        {navSel!=="Moj profil"&&navSel!=="Koledar rokov"&&<div style={{flex:1,overflowY:isMobile?"visible":"auto",padding:isMobile?"18px 16px 28px":"28px 28px 40px"}}>
+        {navSel==="Opozorila"&&<AlertsView grantItems={grantItems} onSelect={g=>{setSel(g);setShowD(true);}}/>}
+        {navSel!=="Moj profil"&&navSel!=="Koledar rokov"&&navSel!=="Opozorila"&&<div style={{flex:1,overflowY:isMobile?"visible":"auto",padding:isMobile?"18px 16px 28px":"28px 28px 40px"}}>
           <div style={{background:c.white,border:`1px solid ${c.border}`,borderRadius:18,padding:isMobile?"24px 18px":"40px 44px",marginBottom:28}}><h1 style={{fontSize:isMobile?25:32,fontWeight:600,lineHeight:1.15,color:c.t1,maxWidth:580,fontFamily:fSerif}}>AI prevod birokratskega jezika.<br/><span style={{color:c.olive,fontFamily:f,fontWeight:800}}>Prave priložnosti.</span></h1><div style={{display:"flex",flexDirection:isMobile?"column":"row",gap:isMobile?14:32,marginTop:28}}>{[{I:FileText,t:"AI PREVOD",d:"Prevedeni v pogovorni jezik"},{I:Sparkles,t:"PAMETNO UJEMANJE",d:"Glede na vaš profil in cilje"},{I:Bell,t:"PRAVOČASNA OBVESTILA",d:"Nikoli več zamujenih rokov"}].map(b=><div key={b.t} style={{display:"flex",alignItems:"flex-start",gap:12,flex:1}}><div style={{width:40,height:40,borderRadius:10,background:c.cream,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><b.I size={18} strokeWidth={1.75} color={c.t1}/></div><div><div style={{fontSize:11,fontWeight:700,letterSpacing:".04em",color:c.t1,marginBottom:3}}>{b.t}</div><div style={{fontSize:13,color:c.t2,lineHeight:1.4}}>{b.d}</div></div></div>)}</div></div>
           <SourceHealthPanel items={sourceHealth} isMobile={isMobile}/>
           <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",gap:12,marginBottom:16}}><h2 style={{fontSize:22,fontWeight:700}}>Priložnosti za vas</h2><span style={{fontSize:12,color:c.t3}}>{filteredGrants.length} / {grantItems.length} aktualnih</span></div>
