@@ -1091,6 +1091,91 @@ function MetaLine({parts}){
 /* ═══════════════════════════════════════════════════ */
 /*  DASHBOARD                                         */
 /* ═══════════════════════════════════════════════════ */
+// Interna admin stran — dostopna samo prek ?admin=1, ni povezave v navigaciji (glej App()).
+// Kaže isto raw stanje kot podpira SourceHealthPanel na Pregledu, plus podrobnosti
+// (failure_count, last_failure) in seznam razpisov, ki še niso "verified".
+function AdminView({isMobile}){
+  const[loading,setLoading]=useState(true);
+  const[sourceHealth,setSourceHealth]=useState([]);
+  const[grants,setGrants]=useState([]);
+  useEffect(()=>{let active=true;(async()=>{
+    const[{data:health},{data:g}]=await Promise.all([
+      sb.from("data_source_health").select("source,last_success,last_failure,failure_count,last_error,updated_at").order("source"),
+      sb.from("grants").select("id,title,provider,status,source_url,deadline_at,raw_payload,last_checked_at").order("last_checked_at",{ascending:false}).limit(500),
+    ]);
+    if(active){setSourceHealth(health||[]);setGrants(g||[]);setLoading(false);}
+  })();return()=>{active=false;};},[]);
+
+  const sourceLabel=source=>({evropskasredstva:"Evropska sredstva",jodp:"JODP",sps:"SPS",aris:"ARIS",ess:"ESS",ajpes:"AJPES/PRS"}[source]||source);
+  // Ista izpeljava kot v mapGrant() — brez tega bi se admin pogled in uporabniški prikaz razšla.
+  const quality=row=>row.raw_payload?.quality_status||(row.source_url&&row.deadline_at?"verified":"needs_review");
+  const flags=row=>row.raw_payload?.quality_flags||[];
+  const flagLabel=fl=>({missing_deadline:"brez roka",missing_source_url:"brez vira"}[fl]||fl);
+
+  const needsReview=grants.filter(g=>quality(g)==="needs_review");
+  const byStatus=s=>grants.filter(g=>g.status===s).length;
+  const stats=[
+    {label:"Skupaj razpisov",value:grants.length},
+    {label:"Odprti",value:byStatus("open")},
+    {label:"Napovedani",value:byStatus("upcoming")},
+    {label:"Zaprti",value:byStatus("closed")},
+    {label:"Za pregled",value:needsReview.length},
+  ];
+
+  return(<div style={{flex:1,minWidth:0,overflowY:isMobile?"visible":"auto",padding:isMobile?"18px 16px 28px":"28px 28px 40px"}}>
+    <div style={{marginBottom:28}}>
+      <h1 style={{fontSize:22,fontWeight:700,marginBottom:4}}>Admin: kakovost podatkov</h1>
+      <div style={{fontSize:13,color:c.t3}}>Interna stran, ni v navigaciji — dostopna samo prek ?admin=1.</div>
+    </div>
+    {loading?<div style={{fontSize:13,color:c.t3}}>Nalagam …</div>:<>
+      <div style={{marginBottom:28}}>
+        <div style={{fontSize:11,fontWeight:700,letterSpacing:".05em",color:c.t3,marginBottom:14}}>PREGLED PODATKOV</div>
+        <div style={{display:isMobile?"grid":"flex",gridTemplateColumns:isMobile?"1fr 1fr":undefined,rowGap:isMobile?18:0}}>
+          {stats.map((m,i)=>(
+            <div key={m.label} style={{minWidth:0,flex:isMobile?undefined:1,paddingLeft:!isMobile&&i>0?24:0,paddingRight:!isMobile?24:0,borderLeft:!isMobile&&i>0?`1px solid ${c.border}`:"none"}}>
+              <div style={{fontSize:isMobile?21:25,fontWeight:700,color:c.t1,lineHeight:1.15,...tnum}}>{m.value}</div>
+              <div style={{fontSize:12,color:c.t2,marginTop:4}}>{m.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{marginBottom:28}}>
+        <div style={{fontSize:11,fontWeight:700,letterSpacing:".05em",color:c.t3,marginBottom:10}}>SISTEMSKI VIRI (podrobno)</div>
+        <div style={{borderTop:`1px solid ${c.border}`}}>
+          {sourceHealth.length===0&&<div style={{padding:"14px 2px",fontSize:13,color:c.t3}}>Ni podatka.</div>}
+          {sourceHealth.map(item=>{const ok=(Number(item.failure_count)||0)===0&&!item.last_error;return(
+            <div key={item.source} style={{display:"flex",flexDirection:isMobile?"column":"row",alignItems:isMobile?"flex-start":"center",gap:isMobile?4:20,padding:"10px 2px",borderBottom:`1px solid ${c.border}`}}>
+              <div style={{fontSize:13,fontWeight:600,color:c.t1,minWidth:150,flexShrink:0}}>{sourceLabel(item.source)}</div>
+              <Status ok={ok} label={ok?"deluje":"napaka"}/>
+              <div style={{fontSize:12,color:c.t2,...tnum,minWidth:170}}>zadnji uspeh: {formatDateTime(item.last_success)}</div>
+              <div style={{fontSize:12,color:c.t2,...tnum,minWidth:80}}>napak: {item.failure_count||0}</div>
+              {item.last_error&&<div style={{fontSize:12,color:c.coral,wordBreak:"break-word",flex:1,minWidth:0}}>{item.last_error}</div>}
+            </div>
+          );})}
+        </div>
+      </div>
+
+      <div>
+        <h2 style={{fontSize:18,fontWeight:700,marginBottom:14}}>Razpisi za pregled ({needsReview.length})</h2>
+        {needsReview.length===0?<div style={{fontSize:13,color:c.t3}}>Vsi razpisi so preverjeni.</div>:(
+          <div style={{borderTop:`1px solid ${c.border}`}}>
+            {needsReview.map(g=>(
+              <div key={g.id} style={{padding:"12px 2px",borderBottom:`1px solid ${c.border}`}}>
+                <div style={{display:"flex",justifyContent:"space-between",gap:12,marginBottom:4}}>
+                  <div style={{fontSize:13,fontWeight:600,color:c.t1,minWidth:0}}>{g.title}</div>
+                  <div style={{fontSize:11,color:c.t3,flexShrink:0,...tnum,textTransform:"uppercase"}}>{g.status}</div>
+                </div>
+                <div style={{fontSize:12,color:c.t3}}>{g.provider||"ni navedeno"} · {flags(g).length?flags(g).map(flagLabel).join(", "):"razlog ni zabeležen"}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </>}
+  </div>);
+}
+
 function SourceHealthPanel({items,isMobile}){
   if(!items.length)return null;
   const label=source=>source==="evropskasredstva"?"Evropska sredstva":source==="jodp"?"JODP":source==="sps"?"SPS":source;
@@ -1112,7 +1197,7 @@ function SourceHealthPanel({items,isMobile}){
 function Dashboard({maticna,profile}){
   const isMobile=useIsMobile();
   const isCompact=useIsCompact();
-  const [grantItems,setGrantItems]=useState(fallbackGrants);const [sel,setSel]=useState(fallbackGrants[0]);const [af,setAf]=useState("Vse");const [showD,setShowD]=useState(true);const [navSel,setNavSel]=useState("Pregled");const[company,setCompany]=useState(null);const[sourceHealth,setSourceHealth]=useState([]);
+  const [grantItems,setGrantItems]=useState(fallbackGrants);const [sel,setSel]=useState(fallbackGrants[0]);const [af,setAf]=useState("Vse");const [showD,setShowD]=useState(true);const [navSel,setNavSel]=useState(()=>new URLSearchParams(window.location.search).get("admin")?"Admin":"Pregled");const[company,setCompany]=useState(null);const[sourceHealth,setSourceHealth]=useState([]);
   useEffect(()=>{let active=true;(async()=>{
     const today=new Date().toISOString();
     // Najprej poskusi z vnaprej izračunanimi matchi iz compute-matches (backend engine)
@@ -1177,7 +1262,8 @@ function Dashboard({maticna,profile}){
         {navSel==="Koledar rokov"&&<DeadlineCalendar grantItems={grantItems} onSelect={g=>{setSel(g);setShowD(true);}}/>}
         {navSel==="Opozorila"&&<AlertsView grantItems={grantItems} onSelect={g=>{setSel(g);setShowD(true);}}/>}
         {navSel==="AI pomočnik"&&<AiAssistantChat companyId={company?.id}/>}
-        {navSel!=="Moj profil"&&navSel!=="Koledar rokov"&&navSel!=="Opozorila"&&navSel!=="AI pomočnik"&&<div style={{flex:1,minWidth:0,overflowY:isMobile?"visible":"auto",padding:isMobile?"18px 16px 28px":"28px 28px 40px"}}>
+        {navSel==="Admin"&&<AdminView isMobile={isMobile}/>}
+        {navSel!=="Moj profil"&&navSel!=="Koledar rokov"&&navSel!=="Opozorila"&&navSel!=="AI pomočnik"&&navSel!=="Admin"&&<div style={{flex:1,minWidth:0,overflowY:isMobile?"visible":"auto",padding:isMobile?"18px 16px 28px":"28px 28px 40px"}}>
           <div style={{marginBottom:28}}>
             <div style={{fontSize:11,fontWeight:700,letterSpacing:".05em",color:c.t3,marginBottom:14}}>PREGLED</div>
             <div style={{display:isMobile?"grid":"flex",gridTemplateColumns:isMobile?"1fr 1fr":undefined,rowGap:isMobile?18:0}}>
@@ -1226,7 +1312,7 @@ function Dashboard({maticna,profile}){
           );})}</div>
           )}
         </div>}
-        {navSel!=="Moj profil"&&navSel!=="AI pomočnik"&&showD&&sel&&(()=>{
+        {navSel!=="Moj profil"&&navSel!=="AI pomočnik"&&navSel!=="Admin"&&showD&&sel&&(()=>{
           // Uradni vir → AI razlaga: prikažemo dvoje ločeno samo, kadar imamo resnično oboje
           // (surov/uraden tekst IN ločen AI povzetek) — sicer en sam, obstoječi povzetek.
           const officialRaw=(sel.officialText||"").trim();
@@ -1275,7 +1361,9 @@ function Dashboard({maticna,profile}){
 /* ═══════════════════════════════════════════════════ */
 export default function App(){
   if(!sb)return(<div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui",color:"#333"}}><div style={{textAlign:"center"}}><h2>Manjkajo okoljske spremenljivke</h2><p style={{color:"#666"}}>VITE_SUPABASE_URL in VITE_SUPABASE_ANON_KEY nista nastavljeni.</p></div></div>);
-  const [mode,setMode]=useState("landing");
+  // ?admin=1 skoči naravnost na Dashboard (ki nato sam odpre skrit Admin pogled) —
+  // brez tega bi moral obiskovalec najprej skozi onboarding, da bi sploh prišel do Dashboarda.
+  const [mode,setMode]=useState(()=>new URLSearchParams(window.location.search).get("admin")?"dashboard":"landing");
   const [maticna,setMaticna]=useState("1234567000");
   const [profile,setProfile]=useState(null);
   const go=p=>{setMode(p);window.scrollTo?.(0,0);};
