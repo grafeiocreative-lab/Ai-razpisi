@@ -40,6 +40,14 @@ const PAGES = [
     url: "https://www.ess.gov.si/delodajalci/financne-spodbude/predstavitev-spodbud-za-zaposlitev/",
     status: "open",
   },
+  {
+    // Javni, neavtenticiran JSON API za javno agencijo SPIRIT Slovenija — najden
+    // z branjem njihovega Angular JS bundla (stran sama je SPA, brez statičnega HTML seznama).
+    source: "spirit",
+    parser: "spirit",
+    url: "https://www.spiritslovenia.si/api/v1/backend/tender/list",
+    status: "open",
+  },
 ];
 
 Deno.serve(async (req) => {
@@ -102,6 +110,8 @@ Deno.serve(async (req) => {
           ? parseArisGrants(body, page.url, page.status)
           : page.parser === "ess"
           ? parseEssPrograms(body, page.url)
+          : page.parser === "spirit"
+          ? await parseSpiritTenders(body, page.url)
           : parseGrants(body, page.status, page.url);
 
         results.parsed += grants.length;
@@ -453,6 +463,87 @@ function parseEssPrograms(html: string, sourcePageUrl: string): Record<string, u
     },
     last_checked_at: scraped,
   }));
+}
+
+// SPIRIT Slovenija: javen, neavtenticiran JSON API (najden branjem njihovega Angular bundla,
+// stran sama je SPA brez statičnega HTML). /tender/list vrne zadnjih ~100 zapisov (aktivnih IN
+// arhiviranih pomešano, vsak z "validity" poljem) brez polnega besedila; za vsebino (namen,
+// pogoji, znesek) je potreben ločen klic /tender/get?id=X na zapis. Da ne naredimo ~100 dodatnih
+// klicev vsak dan za zapise, ki se uporabnikom nikoli ne prikažejo, podrobnosti pridobimo SAMO za
+// zapise z validity==="ACTIVE" (v praksi jih je le peščica). Nekaj zapisov na strani ni pravih
+// razpisov (npr. splošne pristopne strani) — obdržimo samo naslove, ki dejansko zvenijo kot javni
+// razpis/poziv/povabilo.
+async function parseSpiritTenders(jsonText: string, sourcePageUrl: string): Promise<Record<string, unknown>[]> {
+  const parsed = JSON.parse(jsonText);
+  const items: Array<Record<string, unknown>> = Array.isArray(parsed?.data) ? parsed.data : [];
+  const active = items.filter(it =>
+    it.validity === "ACTIVE" && /razpis|poziv|povabilo|vabilo/i.test(String(it.title || ""))
+  );
+
+  const grants: Record<string, unknown>[] = [];
+  const CONCURRENCY = 8;
+
+  for (let i = 0; i < active.length; i += CONCURRENCY) {
+    const batch = active.slice(i, i + CONCURRENCY);
+    const detailed = await Promise.all(batch.map(async (it) => {
+      let rawSummary: string | null = null;
+      try {
+        const detailRes = await fetch(
+          `https://www.spiritslovenia.si/api/v1/backend/tender/get?id=${it.id}`,
+          { headers: { "User-Agent": "AI-Razpisi-Bot/1.0 grant aggregator" } }
+        );
+        if (detailRes.ok) {
+          const detail = await detailRes.json();
+          const snippets: Array<{ content?: string }> = detail?.data?.snippets || [];
+          const snippetsText = snippets.map(s => cleanHtmlText(s.content || "")).join("\n\n");
+          rawSummary = snippetsText.substring(0, 3000) || null;
+        }
+      } catch { /* podrobnosti niso na voljo, nadaljujemo samo s podatki iz seznama */ }
+      return { it, rawSummary };
+    }));
+
+    for (const { it, rawSummary } of detailed) {
+      const title = cleanHtmlText(String(it.title || ""));
+      if (!title) continue;
+
+      const sourceUrl = `https://www.spiritslovenia.si/${it.link}`;
+      const deadlineAt = it.endTime ? new Date(String(it.endTime)).toISOString() : null;
+      const text = title + " " + (rawSummary || "");
+      const qualityFlags = [deadlineAt ? null : "missing_deadline"].filter(Boolean);
+
+      grants.push({
+        title,
+        provider: "SPIRIT Slovenija",
+        source_url: sourceUrl,
+        status: deadlineAt && new Date(deadlineAt).getTime() < Date.now() ? "closed" : "open",
+        published_at: it.publishDate || null,
+        deadline_at: deadlineAt,
+        is_de_minimis: /de minimis/i.test(text),
+        max_aid_amount: parseLargestAmount(rawSummary),
+        funding_rate: parseFundingRate(rawSummary || ""),
+        eligible_company_sizes: extractCompanySizes(text),
+        eligible_regions: extractRegions(text),
+        eligible_sectors: extractTags(text),
+        eligible_costs: [],
+        investment_types: extractTags(text),
+        raw_summary: rawSummary,
+        plain_language_summary: null,
+        requirements: null,
+        required_documents: [],
+        raw_payload: {
+          source: "spiritslovenia.si",
+          source_page_url: sourcePageUrl,
+          spirit_id: it.id,
+          scraped_at: new Date().toISOString(),
+          quality_flags: qualityFlags,
+          quality_status: qualityFlags.length ? "needs_review" : "verified",
+        },
+        last_checked_at: new Date().toISOString(),
+      });
+    }
+  }
+
+  return grants;
 }
 
 function parseArisGrants(html: string, sourcePageUrl: string, defaultStatus: string): Record<string, unknown>[] {
