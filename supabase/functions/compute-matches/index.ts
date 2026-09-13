@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
   if (!resolvedId) {
     const { data } = await supabase
       .from("companies")
-      .select("id, region, size_class, interests, dm_free")
+      .select("id, region, size_class, interests, dm_free, skd_label")
       .eq("registration_number", registrationNumber!)
       .maybeSingle();
     if (!data) return json({ error: "Podjetje ni najdeno v companies" }, 404);
@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
   } else {
     const { data } = await supabase
       .from("companies")
-      .select("id, region, size_class, interests, dm_free")
+      .select("id, region, size_class, interests, dm_free, skd_label")
       .eq("id", resolvedId)
       .maybeSingle();
     company = data;
@@ -60,6 +60,8 @@ Deno.serve(async (req) => {
     kmu: body.kmu || dbKmu,
     dmFree: body.dm_free ?? dbDmFree,
     region: body.region || (company as Record<string,unknown>)?.region || null,
+    // Samoizbrana dejavnost (SKD naziv) — glej activityMatches() spodaj.
+    skdLabel: body.skd_label || (company as Record<string,unknown>)?.skd_label || null,
   };
 
   // Shrani profil (interesi/velikost/de minimis prostor) nazaj v companies —
@@ -69,6 +71,8 @@ Deno.serve(async (req) => {
   if (Array.isArray(body.interests)) profileUpdate.interests = body.interests;
   if (body.kmu) profileUpdate.size_class = kmuToSizeClass[body.kmu] || "small";
   if (body.dm_free !== undefined) profileUpdate.dm_free = body.dm_free;
+  if (body.skd_code) profileUpdate.skd_code = body.skd_code;
+  if (body.skd_label) profileUpdate.skd_label = body.skd_label;
   if (Object.keys(profileUpdate).length) {
     const { error: profileError } = await supabase.from("companies").update(profileUpdate).eq("id", resolvedId);
     if (profileError) console.error("Shranjevanje profila ni uspelo:", profileError.message);
@@ -141,6 +145,20 @@ interface Profile {
   kmu: string;
   dmFree: number;
   region: string | null;
+  skdLabel: string | null;
+}
+
+// Ista tehnika kot identična kopija activityMatches() v src/App.jsx — obe morata ostati
+// usklajeni, sicer se prikazan (frontend fallback) in dejansko shranjen (ta funkcija) match razidejo.
+const SKD_STOPWORDS = new Set(["in", "ali", "za", "na", "po", "do", "iz", "pri", "ter", "ki", "ni", "je", "se", "ne", "kot", "tudi", "oz", "itd", "dejavnosti", "dejavnost", "storitve", "storitev", "drugo", "druge", "drugih"]);
+function activityMatches(hay: string, skdLabel: string | null | undefined): boolean {
+  if (!skdLabel) return false;
+  const stems = [...new Set(
+    skdLabel.toLowerCase().replace(/[.,()–-]/g, " ").split(/\s+/)
+      .filter(w => w.length >= 5 && !SKD_STOPWORDS.has(w))
+      .map(w => w.slice(0, 6))
+  )];
+  return stems.some(st => hay.includes(st));
 }
 
 function scoreGrant(row: GrantRow, profile: Record<string, unknown>): { score: number; breakdown: Record<string, unknown> } {
@@ -177,6 +195,11 @@ function scoreGrant(row: GrantRow, profile: Record<string, unknown>): { score: n
       s += 15;
       reasons.push(`Interes "${id}" se ujema z vsebino razpisa`);
     }
+  }
+
+  if (activityMatches(hay, p.skdLabel)) {
+    s += 18;
+    reasons.push(`Dejavnost "${p.skdLabel}" se ujema z vsebino razpisa`);
   }
 
   // Velikost podjetja

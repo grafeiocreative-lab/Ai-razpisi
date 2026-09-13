@@ -535,12 +535,28 @@ function Onboarding({onComplete,onBack}){
   const [step,setStep]=useState(1);const [iv,setIv]=useState("");const [ajpesStatus,setAjpesStatus]=useState("pending");const [jodpStatus,setJodpStatus]=useState("pending");const [jodpResult,setJodpResult]=useState(null);const [ajpesResult,setAjpesResult]=useState(null);const [step6Stats,setStep6Stats]=useState(null);
   const [emp,setEmp]=useState("18");const [rev,setRev]=useState("1.4");const [bal,setBal]=useState("0.9");
   const [sel,setSel]=useState(new Set(["digi","export"]));const ir=useRef(null);
+  // Samoizbrana dejavnost (SKD 2025) — AJPES prek brezplačnega vira ne vrne prave SKD,
+  // zato uporabnik izbere sam s seznama, da ujemanje z razpisi ni odvisno samo od 10
+  // fiksnih "interesov" spodaj (glej step===5). Seznam se naloži šele ob prihodu na korak 3.
+  const[skdList,setSkdList]=useState([]);const[skdQuery,setSkdQuery]=useState("");const[skdCode,setSkdCode]=useState("");const[skdLabel,setSkdLabel]=useState("");const skdFetchedRef=useRef(false);
   useEffect(()=>{if(step===1&&ir.current)ir.current.focus();},[step]);
+  // Nivo 4 (razred) je pravilna granularnost za "glavno dejavnost", a uradna imena so ozka
+  // ("Dejavnost restavracij") — beseda, ki jo uporabnik dejansko vtipka (npr. "gostinstvo"),
+  // je pogosto samo v imenu nadrejenega razdelka (nivo 1). Iskanje zato preveri oboje.
+  useEffect(()=>{if(step!==3||skdFetchedRef.current)return;skdFetchedRef.current=true;let active=true;(async()=>{
+    const[{data:classes},{data:sections}]=await Promise.all([
+      sb.from("skd_lookup").select("code,descriptor_sl,section_code").eq("level",4).order("descriptor_sl"),
+      sb.from("skd_lookup").select("code,descriptor_sl").eq("level",1),
+    ]);
+    if(!active)return;
+    const sectionLabel=Object.fromEntries((sections||[]).map(s=>[s.code,s.descriptor_sl]));
+    setSkdList((classes||[]).map(cl=>({...cl,sectionLabel:sectionLabel[cl.section_code]||""})));
+  })();return()=>{active=false;};},[step]);
   useEffect(()=>{if(step!==6)return;let active=true;(async()=>{
     const today=new Date().toISOString();
     const{data}=await sb.from("grants").select("id,title,eligible_sectors,eligible_company_sizes,is_de_minimis,eligible_regions,raw_summary,requirements,source_url").in("status",["open","upcoming"]).or(`deadline_at.is.null,deadline_at.gte.${today}`).limit(200);
     if(!active||!data)return;
-    const pr={interests:[...sel],kmu,dmFree,region:co?.region||null};
+    const pr={interests:[...sel],kmu,dmFree,region:co?.region||null,skdLabel};
     const verified=data.filter(row=>/^https?:\/\//i.test(String(row.source_url||"")));
     const c60=verified.filter(row=>scoreGrant(row,pr)>=60).length;
     const c80=verified.filter(row=>scoreGrant(row,pr)>=80).length;
@@ -550,7 +566,7 @@ function Onboarding({onComplete,onBack}){
       const cid=co?.id||ajpesResult?.company?.id;
       // compute-matches shrani profil (interesi/velikost/de minimis) nazaj v companies sam —
       // neposreden zapis iz brskalnika je bil tu prej in je padal na RLS (anon ni smel pisati).
-      sb.functions.invoke("compute-matches",{body:{company_id:cid,interests:[...sel],kmu,dm_free:dmFree,region:co?.region||null}}).then(({error})=>{if(error)console.error("compute-matches ni uspel:",error);}).catch(err=>console.error("compute-matches ni uspel:",err));
+      sb.functions.invoke("compute-matches",{body:{company_id:cid,interests:[...sel],kmu,dm_free:dmFree,region:co?.region||null,skd_code:skdCode||null,skd_label:skdLabel||null}}).then(({error})=>{if(error)console.error("compute-matches ni uspel:",error);}).catch(err=>console.error("compute-matches ni uspel:",err));
     }
   })();return()=>{active=false;};},[step]);
   useEffect(()=>{if(step!==2)return;setAjpesStatus("pending");setJodpStatus("pending");setAjpesResult(null);setJodpResult(null);const started=Date.now();const minShow=900;(async()=>{const[ajpes,jodp]=await Promise.allSettled([sb.functions.invoke("fetch-ajpes",{body:{registration_number:iv}}),sb.functions.invoke("fetch-jodp",{body:{registration_number:iv}})]);if(jodp.status==="fulfilled"){setJodpResult(jodp.value.data);setJodpStatus(jodp.value.data?.ok===false?"error":"ok");}else setJodpStatus("error");let company=ajpes.status==="fulfilled"?ajpes.value.data?.company:null;if(!company){const{data}=await sb.from("companies").select("*").eq("registration_number",iv).maybeSingle();company=data;}if(company){setAjpesResult({ok:true,company});setAjpesStatus("ok");}else setAjpesStatus("error");const wait=Math.max(0,minShow-(Date.now()-started));setTimeout(()=>setStep(3),wait);})();},[step]);
@@ -568,7 +584,33 @@ function Onboarding({onComplete,onBack}){
   return(<div style={{background:c.ivory,minHeight:"100vh",fontFamily:f}}><div style={{borderBottom:`1px solid ${c.border}`,background:c.white,padding:"16px 24px",display:"flex",alignItems:"center",gap:12,position:"sticky",top:0,zIndex:10}}><button onClick={()=>setStep(s=>s===3?1:Math.max(s-1,1))} style={{background:"none",border:"none",cursor:"pointer",padding:4}}><ChevronLeft size={20} color={c.t2}/></button><div style={{flex:1}}><div style={{fontSize:13,color:c.t2}}>Korak {step-2} od 4</div><div style={{fontSize:15,fontWeight:600,color:c.t1}}>{step===3?"Profil podjetja":step===4?"KMU klasifikacija":step===5?"Strateški interesi":"Rezultati"}</div></div><div style={{display:"flex",gap:6}}>{[3,4,5,6].map(s=><div key={s} style={{width:s===step?24:8,height:8,borderRadius:4,background:s<=step?c.olive:`${c.t3}30`}}/>)}</div></div><div style={{maxWidth:540,margin:"0 auto",padding:"28px 24px 60px"}}>
     {step===3&&!co&&jodpResult!=null&&!jodpResult.company_in_jodp&&<div style={{textAlign:"center",padding:"48px 24px"}}><div style={{width:56,height:56,borderRadius:radius.lg,background:c.amberLight,display:"inline-flex",alignItems:"center",justifyContent:"center",marginBottom:16}}><X size={24} color={c.amber}/></div><h2 style={{fontSize:20,fontWeight:700,color:c.t1,marginBottom:8}}>{jodpResult.is_davcna?"Davčne številke nismo prepoznali":"Podjetja nismo našli"}</h2>{jodpResult.is_davcna&&jodpResult.vies_company?<><p style={{fontSize:14,color:c.t2,marginBottom:12}}>Davčna <strong>{iv}</strong> je veljavna — VIES evidenca jo pozna kot:</p><div style={{background:c.white,border:`1px solid ${c.border}`,borderRadius:radius.md,padding:"14px 18px",marginBottom:16,textAlign:"left"}}><div style={{fontSize:14,fontWeight:700,color:c.t1,marginBottom:4}}>{jodpResult.vies_company.name}</div><div style={{fontSize:12,color:c.t2}}>{jodpResult.vies_company.address}</div></div><p style={{fontSize:13,color:c.t3,marginBottom:28}}>To podjetje ni v naši lokalni bazi. Za nadaljevanje poiščite matično številko (10 mest) na <a href="https://www.ajpes.si" target="_blank" rel="noopener noreferrer" style={{color:c.olive,fontWeight:600}}>ajpes.si</a> in jo vnesite namesto davčne.</p></>:<><p style={{fontSize:14,color:c.t2,marginBottom:8}}>{jodpResult.is_davcna?<>Davčna <strong>{iv}</strong> ni bila najdena. Vnesite 10-mestno matično številko.</>:<>Številka <strong>{iv}</strong> ne obstaja v JODP evidenci.</>}</p><p style={{fontSize:13,color:c.t3,marginBottom:28}}>{jodpResult.is_davcna?"Matično najdete na ajpes.si ali poslovnem dokumentu.":"Preverite matično (10 mest) ali davčno (8 mest)."}</p></>}<button onClick={()=>setStep(1)} style={{display:"inline-flex",alignItems:"center",gap:8,padding:"12px 28px",borderRadius:radius.md,border:"none",background:c.graphite,color:c.white,fontSize:14,fontWeight:600,fontFamily:f,cursor:"pointer"}}><ChevronLeft size={16}/>Vpiši drugo številko</button></div>}
     {step===3&&(co||!jodpResult||jodpResult.company_in_jodp)&&<><h2 style={{fontSize:22,fontWeight:700,color:c.t1,marginBottom:20}}>Profil podjetja</h2>
-      <DataList rows={[["Firma",mc.name],["Matična",mc.maticna],["Davčna",mc.taxNumber],["Naslov",mc.address],["Regija",mc.nuts&&mc.nuts!=="—"?`${mc.region} (${mc.nuts})`:mc.region],["Pravna oblika",mc.legalForm],["Ustanovljeno",mc.founded!=="—"?`${mc.founded} (${mc.age} let)`:"ni podatka"],["SKD (glavna)",mc.skdMain!=="—"?`${mc.skdMain} · ${mc.skdMainLabel}`:"ni podatka"]]}/>
+      <DataList rows={[["Firma",mc.name],["Matična",mc.maticna],["Davčna",mc.taxNumber],["Naslov",mc.address],["Regija",mc.nuts&&mc.nuts!=="—"?`${mc.region} (${mc.nuts})`:mc.region],["Pravna oblika",mc.legalForm],["Ustanovljeno",mc.founded!=="—"?`${mc.founded} (${mc.age} let)`:"ni podatka"]]}/>
+      {mc.skdMain==="—"&&<div style={{marginTop:22,marginBottom:26}}>
+        <div style={{fontSize:11,fontWeight:700,letterSpacing:".04em",color:c.t1,marginBottom:6}}>DEJAVNOST (SKD)</div>
+        <p style={{fontSize:12,color:c.t3,marginTop:0,marginBottom:10,lineHeight:1.5}}>AJPES prek brezplačnega vira ne vrne uradne dejavnosti. Izberite jo sami — s tem bo ujemanje z razpisi natančnejše.</p>
+        {skdCode?(
+          <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",border:`1.5px solid ${c.olive}`,borderRadius:radius.md,background:c.oliveLight}}>
+            <span style={{fontSize:13,fontWeight:600,color:c.t1,flex:1,minWidth:0}}>{skdCode} · {skdLabel}</span>
+            <button onClick={()=>{setSkdCode("");setSkdLabel("");setSkdQuery("");}} style={{background:"none",border:"none",cursor:"pointer",padding:2,flexShrink:0}}><X size={16} color={c.t2}/></button>
+          </div>
+        ):(<>
+          <input value={skdQuery} onChange={e=>setSkdQuery(e.target.value)} placeholder="Išči dejavnost (npr. gostinstvo, programiranje, trgovina …)" style={{width:"100%",height:44,border:`1px solid ${c.border}`,borderRadius:radius.md,padding:"0 14px",fontSize:14,fontFamily:f,color:c.t1,background:c.white,outline:"none",boxSizing:"border-box"}}/>
+          {skdQuery.trim().length>=2&&(()=>{
+            const q=skdQuery.trim().toLowerCase();
+            const matches=skdList.filter(s=>s.descriptor_sl.toLowerCase().includes(q)||s.code.toLowerCase().includes(q)||s.sectionLabel.toLowerCase().includes(q)).slice(0,8);
+            return matches.length?(
+              <div style={{border:`1px solid ${c.border}`,borderRadius:radius.md,marginTop:6,overflow:"hidden"}}>
+                {matches.map(m=>(
+                  <div key={m.code} onClick={()=>{setSkdCode(m.code);setSkdLabel(m.descriptor_sl);setSkdQuery("");}} style={{padding:"10px 14px",fontSize:13,color:c.t1,cursor:"pointer",borderBottom:`1px solid ${c.border}40`}}>
+                    <span style={{color:c.t3,...tnum,marginRight:8}}>{m.code}</span>{m.descriptor_sl}
+                  </div>
+                ))}
+              </div>
+            ):<div style={{fontSize:12,color:c.t3,marginTop:6}}>Ni zadetkov za "{skdQuery}".</div>;
+          })()}
+          <p style={{fontSize:12,color:c.amber,marginTop:10,marginBottom:0,lineHeight:1.5}}>Če dejavnosti ne izberete, bomo prikazali širši, manj natančen nabor razpisov.</p>
+        </>)}
+      </div>}
       <div style={{marginTop:26,marginBottom:26}}>
         <div style={{fontSize:11,fontWeight:700,letterSpacing:".04em",color:c.t1,marginBottom:14}}>DE MINIMIS STANJE</div>
         <div style={{display:"flex",gap:28,marginBottom:14}}>
@@ -583,7 +625,7 @@ function Onboarding({onComplete,onBack}){
       <button onClick={()=>setStep(4)} style={btn}>Podatki so pravilni <ArrowRight size={18}/></button></>}
     {step===4&&<><h2 style={{fontSize:22,fontWeight:700,color:c.t1,marginBottom:24}}>KMU klasifikacija</h2>{[{l:"Zaposleni",v:emp,s:setEmp,u:""},{l:"Prihodek",v:rev,s:setRev,u:"M €"},{l:"Bilanca",v:bal,s:setBal,u:"M €"}].map(fi=>(<div key={fi.l} style={{marginBottom:14}}><label style={{fontSize:12,fontWeight:600,color:c.t2,display:"block",marginBottom:6}}>{fi.l}</label><div style={{display:"flex",gap:8}}><input value={fi.v} onChange={e=>fi.s(e.target.value)} style={{flex:1,height:48,border:`1px solid ${c.border}`,borderRadius:radius.md,padding:"0 16px",fontSize:16,fontFamily:f,color:c.t1,background:c.white,outline:"none",...tnum}}/>{fi.u&&<span style={{fontSize:13,color:c.t3,display:"flex",alignItems:"center"}}>{fi.u}</span>}</div></div>))}{(e>0||r>0)&&<div style={{display:"flex",alignItems:"center",gap:8,padding:"16px 2px",borderTop:`1px solid ${c.border}`,borderBottom:`1px solid ${c.border}`,margin:"16px 0"}}><span style={{width:7,height:7,borderRadius:"50%",background:kmuOk?c.olive:c.amber,flexShrink:0}}/><span style={{fontSize:14,fontWeight:700,color:c.t1}}>{kmu} PODJETJE</span></div>}<button onClick={()=>setStep(5)} style={{...btn,marginTop:16}}>Naprej <ArrowRight size={18}/></button></>}
     {step===5&&<><h2 style={{fontSize:22,fontWeight:700,color:c.t1,marginBottom:8}}>Strateški interesi</h2><p style={{fontSize:13,color:c.t2,marginBottom:24}}>Izberite področja, pomembna za vaše podjetje — po njih bomo prilagodili ujemanje z razpisi.</p><div style={{display:"flex",flexWrap:"wrap",gap:10,marginBottom:32}}>{intOpts.map(({id,label,Icon})=>{const s=sel.has(id);return(<button key={id} onClick={()=>toggleI(id)} style={{display:"flex",alignItems:"center",gap:8,padding:"12px 20px",borderRadius:radius.md,fontSize:14,fontWeight:500,fontFamily:f,cursor:"pointer",background:s?c.oliveLight:c.white,border:`1.5px solid ${s?c.olive:c.border}`,color:s?c.olive:c.t2}}><Icon size={16}/>{label}</button>);})}</div><button onClick={()=>setStep(6)} style={btn}>Poišči priložnosti <ArrowRight size={18}/></button></>}
-    {step===6&&<><div style={{textAlign:"center",marginBottom:28}}><div style={{width:56,height:56,borderRadius:radius.lg,background:c.olive,display:"inline-flex",alignItems:"center",justifyContent:"center",marginBottom:16}}><Check size={26} color={c.white} strokeWidth={2.5}/></div><h2 style={{fontSize:24,fontWeight:700,color:c.t1}}>Profil pripravljen</h2></div><div style={{display:"flex",alignItems:"baseline",gap:12,padding:"18px 2px",borderTop:`1px solid ${c.border}`,borderBottom:`1px solid ${c.border}`,marginBottom:24}}><div style={{fontSize:34,fontWeight:800,color:c.t1,...tnum}}>{step6Stats!==null?step6Stats.total:"…"}</div><div><div style={{fontSize:15,fontWeight:600,color:c.t1}}>priložnosti z ujemanjem nad 60 %</div>{step6Stats?.top>0&&<div style={{fontSize:13,color:c.t2,...tnum}}>{step6Stats.top} z ujemanjem nad 80 %</div>}</div></div><button onClick={()=>onComplete({maticna:co?.registration_number||iv,kmu,dmFree,interests:[...sel],region:co?.region||null})} style={{...btn,height:56,background:c.olive,fontSize:16,fontWeight:700}}>Odpri priložnosti <ArrowRight size={20}/></button></>}
+    {step===6&&<><div style={{textAlign:"center",marginBottom:28}}><div style={{width:56,height:56,borderRadius:radius.lg,background:c.olive,display:"inline-flex",alignItems:"center",justifyContent:"center",marginBottom:16}}><Check size={26} color={c.white} strokeWidth={2.5}/></div><h2 style={{fontSize:24,fontWeight:700,color:c.t1}}>Profil pripravljen</h2></div><div style={{display:"flex",alignItems:"baseline",gap:12,padding:"18px 2px",borderTop:`1px solid ${c.border}`,borderBottom:`1px solid ${c.border}`,marginBottom:24}}><div style={{fontSize:34,fontWeight:800,color:c.t1,...tnum}}>{step6Stats!==null?step6Stats.total:"…"}</div><div><div style={{fontSize:15,fontWeight:600,color:c.t1}}>priložnosti z ujemanjem nad 60 %</div>{step6Stats?.top>0&&<div style={{fontSize:13,color:c.t2,...tnum}}>{step6Stats.top} z ujemanjem nad 80 %</div>}</div></div><button onClick={()=>onComplete({maticna:co?.registration_number||iv,kmu,dmFree,interests:[...sel],region:co?.region||null,skdLabel:skdLabel||null})} style={{...btn,height:56,background:c.olive,fontSize:16,fontWeight:700}}>Odpri priložnosti <ArrowRight size={20}/></button></>}
   </div></div>);
 }
 
@@ -879,7 +921,10 @@ function CompanyProfile({maticna,grantItems=[],onGoToGrants}){
   const isMobile=useIsMobile();
   const[company,setCompany]=useState(null);const[loading,setLoading]=useState(true);
   useEffect(()=>{if(!maticna){setLoading(false);return;}let active=true;(async()=>{const{data}=await sb.from("companies").select("*").eq("registration_number",maticna).maybeSingle();if(active){setCompany(data||null);setLoading(false);}})();return()=>{active=false;};},[maticna]);
-  const mc={name:company?.company_name||"Podjetje ni najdeno",maticna:company?.registration_number||maticna||"—",taxNumber:company?.tax_number||"—",address:company?.address||"—",region:company?.region||company?.municipality||"—",nuts:company?.nuts||"—",legalForm:company?.legal_form||"—",founded:company?.founded_year||"—",skdMain:company?.main_activity_code||"—",skdMainLabel:company?.main_activity_name||"—"};
+  // main_activity_* = pravi AJPES podatek (zdaj vedno prazen, brezplačni vir ga ne vrne).
+  // skd_* = uporabnik sam izbral v onboardingu — jasno ločeno v prikazu (glej skdSelfDeclared spodaj).
+  const skdSelfDeclared=!company?.main_activity_code&&!!company?.skd_code;
+  const mc={name:company?.company_name||"Podjetje ni najdeno",maticna:company?.registration_number||maticna||"—",taxNumber:company?.tax_number||"—",address:company?.address||"—",region:company?.region||company?.municipality||"—",nuts:company?.nuts||"—",legalForm:company?.legal_form||"—",founded:company?.founded_year||"—",skdMain:company?.main_activity_code||company?.skd_code||"—",skdMainLabel:company?.main_activity_name||company?.skd_label||"—"};
   // Naslov sekcije: ikona neposredno ob besedilu, brez beige kvadratka.
   const sh=(Icon,title)=>(<div style={{display:"flex",alignItems:"center",gap:9,marginBottom:16,paddingBottom:12,borderBottom:`1px solid ${c.border}`}}><Icon size={17} color={c.olive} strokeWidth={1.75}/><h2 style={{fontSize:14,fontWeight:700,letterSpacing:".02em",color:c.t1,margin:0,textTransform:"uppercase"}}>{title}</h2></div>);
   const card={background:c.white,border:`1px solid ${c.border}`,borderRadius:radius.lg,padding:isMobile?"18px 16px":"22px 24px",marginBottom:20};
@@ -891,7 +936,7 @@ function CompanyProfile({maticna,grantItems=[],onGoToGrants}){
     </div>
     <div style={card}>
       {sh(Building2,"Osnovni podatki")}
-      <DataList rows={[["Matična",mc.maticna],["Davčna",mc.taxNumber],["Naslov",mc.address],["Regija",mc.nuts&&mc.nuts!=="—"?`${mc.region} (${mc.nuts})`:mc.region],["Pravna oblika",mc.legalForm],["Ustanovljeno",mc.founded!=="—"?String(mc.founded):"ni podatka"],["SKD",mc.skdMain!=="—"?`${mc.skdMain} · ${mc.skdMainLabel}`:"ni podatka"]]}/>
+      <DataList rows={[["Matična",mc.maticna],["Davčna",mc.taxNumber],["Naslov",mc.address],["Regija",mc.nuts&&mc.nuts!=="—"?`${mc.region} (${mc.nuts})`:mc.region],["Pravna oblika",mc.legalForm],["Ustanovljeno",mc.founded!=="—"?String(mc.founded):"ni podatka"],[skdSelfDeclared?"SKD (samoizbrano)":"SKD",mc.skdMain!=="—"?`${mc.skdMain} · ${mc.skdMainLabel}`:"ni podatka"]]}/>
     </div>
     <div style={card}>
       {sh(Shield,"De minimis pomoči")}
@@ -950,6 +995,14 @@ function effectiveGrantStatus(row){
   return row.status||"open";
 }
 
+// Deljena med scoreGrant() tu in identično kopijo v supabase/functions/compute-matches —
+// obe morata ostati usklajeni, sicer se prikazan in dejansko shranjen match razidejo.
+const SKD_STOPWORDS=new Set(["in","ali","za","na","po","do","iz","pri","ter","ki","ni","je","se","ne","kot","tudi","oz","itd","dejavnosti","dejavnost","storitve","storitev","drugo","druge","drugih"]);
+function activityMatches(hay,skdLabel){
+  if(!skdLabel)return false;
+  const stems=[...new Set(skdLabel.toLowerCase().replace(/[.,()–-]/g," ").split(/\s+/).filter(w=>w.length>=5&&!SKD_STOPWORDS.has(w)).map(w=>w.slice(0,6)))];
+  return stems.some(st=>hay.includes(st));
+}
 function scoreGrant(row,profile){
   const tags=row.eligible_sectors||[];
   const sizes=row.eligible_company_sizes||[];
@@ -972,6 +1025,10 @@ function scoreGrant(row,profile){
     for(const[id,ks]of Object.entries(kws)){
       if(profile.interests?.includes(id)&&ks.some(k=>hay.includes(k)))s+=15;
     }
+    // Samoizbrana dejavnost (SKD label, glej Onboarding): groba primerjava ključnih besed
+    // iz uradnega SKD naziva z besedilom razpisa — ista "stem" tehnika kot kws zgoraj
+    // (npr. "programiranje"→"progra" ujame tudi "programske","programski" ipd.).
+    if(activityMatches(hay,profile.skdLabel))s+=18;
     // Ujemanje velikosti podjetja
     const sizeMap={MIKRO:"micro",MALO:"small",MSP:"small",SREDNJE:"medium",VELIKO:"large"};
     const compSize=sizeMap[profile.kmu]||null;
