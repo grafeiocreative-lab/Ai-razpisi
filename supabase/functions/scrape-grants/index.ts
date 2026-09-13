@@ -133,7 +133,7 @@ Deno.serve(async (req) => {
           : page.parser === "spirit"
           ? await parseSpiritTenders(body, page.url)
           : page.parser === "govsi"
-          ? await parseGovSiJavneObjave(body, page.url, page.provider || "Ministrstvo")
+          ? await parseGovSiJavneObjave(body, page.url, page.provider || "Ministrstvo", supabase)
           : parseGrants(body, page.status, page.url);
 
         results.parsed += grants.length;
@@ -523,9 +523,8 @@ async function parseSpiritTenders(jsonText: string, sourcePageUrl: string): Prom
     const detailed = await Promise.all(batch.map(async (it) => {
       let rawSummary: string | null = null;
       try {
-        const detailRes = await fetch(
-          `https://www.spiritslovenia.si/api/v1/backend/tender/get?id=${it.id}`,
-          { headers: { "User-Agent": "AI-Razpisi-Bot/1.0 grant aggregator" } }
+        const detailRes = await fetchWithTimeout(
+          `https://www.spiritslovenia.si/api/v1/backend/tender/get?id=${it.id}`
         );
         if (detailRes.ok) {
           const detail = await detailRes.json();
@@ -585,9 +584,12 @@ async function parseSpiritTenders(jsonText: string, sourcePageUrl: string): Prom
 // HTML tabela (<td class="td-title/td-published-date/td-due-date">), posamezna objava pa
 // <article class="tender-page"> z besedilnimi razdelki (Namen, Predmet, Upravičenci ...).
 // En parser torej pokrije poljubno število ministrstev — glej PAGES zgoraj za dodajanje novih.
-// Podrobno vsebino (za raw_summary) pridobimo samo za objave, ki še niso potekle, da ne
-// nalagamo strežnika z nepotrebnimi klici za zaprte razpise.
-async function parseGovSiJavneObjave(html: string, sourcePageUrl: string, provider: string): Promise<Record<string, unknown>[]> {
+// Podrobno vsebino (za raw_summary) pridobimo samo za objave, ki še niso potekle IN ki je še
+// nimamo shranjene — brez tega bi vsak dan ponovno prenesli podrobno stran za VSAKO odprto
+// objavo (pri dveh ministrstvih hitro 40-50 klicev), kar je enkrat dejansko preseglo časovno
+// omejitev edge funkcije (HTTP 546). Besedilo objave se po objavi skoraj nikoli ne spremeni,
+// zato je varno enkrat pridobljeno vsebino ponovno uporabiti namesto vsakodnevnega ponovnega klica.
+async function parseGovSiJavneObjave(html: string, sourcePageUrl: string, provider: string, supabase: ReturnType<typeof createClient>): Promise<Record<string, unknown>[]> {
   const GOVSI_BASE = "https://www.gov.si";
   const rows = [...html.matchAll(/<tr>([\s\S]*?)<\/tr>/g)];
 
@@ -613,13 +615,31 @@ async function parseGovSiJavneObjave(html: string, sourcePageUrl: string, provid
   const open = parsedRows.filter(r => !r.deadlineAt || new Date(r.deadlineAt).getTime() >= now);
   const closed = parsedRows.filter(r => r.deadlineAt && new Date(r.deadlineAt).getTime() < now);
 
-  for (let i = 0; i < open.length; i += CONCURRENCY) {
-    const batch = open.slice(i, i + CONCURRENCY);
+  const urlFor = (r: Row) => r.path.startsWith("http") ? r.path : `${GOVSI_BASE}${r.path}`;
+  const knownSummaries = new Map<string, string>();
+  if (open.length) {
+    const { data: known } = await supabase
+      .from("grants")
+      .select("source_url, raw_summary")
+      .in("source_url", open.map(urlFor))
+      .not("raw_summary", "is", null);
+    for (const k of known || []) {
+      if (k.source_url && k.raw_summary) knownSummaries.set(k.source_url, k.raw_summary);
+    }
+  }
+  const toFetch = open.filter(r => !knownSummaries.has(urlFor(r)));
+
+  for (const r of open) {
+    const cached = knownSummaries.get(urlFor(r));
+    if (cached !== undefined) grants.push(buildGovSiGrant(r, cached, provider, sourcePageUrl, "open"));
+  }
+
+  for (let i = 0; i < toFetch.length; i += CONCURRENCY) {
+    const batch = toFetch.slice(i, i + CONCURRENCY);
     const detailed = await Promise.all(batch.map(async (r) => {
       let rawSummary: string | null = null;
       try {
-        const url = r.path.startsWith("http") ? r.path : `${GOVSI_BASE}${r.path}`;
-        const detailRes = await fetch(url, { headers: { "User-Agent": "AI-Razpisi-Bot/1.0 grant aggregator" } });
+        const detailRes = await fetchWithTimeout(urlFor(r));
         if (detailRes.ok) {
           const detailHtml = await detailRes.text();
           const article = detailHtml.match(/<article class="tender-page">([\s\S]*?)<\/article>/);
@@ -1134,6 +1154,23 @@ function extractTags(block: string): string[] {
   if (lower.includes("sofinancir") || lower.includes("nepovratn")) tags.push("Nepovratna sredstva");
 
   return [...new Set(tags)];
+}
+
+// Za SPIRIT/gov.si podrobnostne klice: državne strani so občasno počasne, brez omejitve pa
+// en sam počasen odziv lahko potegne celotno edge funkcijo čez njeno časovno omejitev
+// (dejansko opaženo: HTTP 546 timeout). 8s na klic je dovolj za normalno stran, prekratek
+// odziv preprosto obravnavamo kot "podrobnosti niso na voljo" in nadaljujemo samo z naslovom.
+async function fetchWithTimeout(url: string, timeoutMs = 8000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      headers: { "User-Agent": "AI-Razpisi-Bot/1.0 grant aggregator" },
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function isHttpUrl(value: string): boolean {
