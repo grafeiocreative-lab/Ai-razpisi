@@ -48,6 +48,23 @@ const PAGES = [
     url: "https://www.spiritslovenia.si/api/v1/backend/tender/list",
     status: "open",
   },
+  {
+    // Vsa ministrstva delijo isto gov.si "javne objave" CMS predlogo (tabela + strani
+    // z razdelki Namen/Predmet) — en parser (parseGovSiJavneObjave) pokrije oboje,
+    // dodajanje novega ministrstva je samo nov vnos tu.
+    source: "mgts",
+    parser: "govsi",
+    url: "https://www.gov.si/drzavni-organi/ministrstva/ministrstvo-za-gospodarstvo-turizem-in-sport/javne-objave/",
+    provider: "Ministrstvo za gospodarstvo, turizem in šport",
+    status: "open",
+  },
+  {
+    source: "mkgp",
+    parser: "govsi",
+    url: "https://www.gov.si/drzavni-organi/ministrstva/ministrstvo-za-kmetijstvo-gozdarstvo-in-prehrano/javne-objave/",
+    provider: "Ministrstvo za kmetijstvo, gozdarstvo in prehrano",
+    status: "open",
+  },
 ];
 
 Deno.serve(async (req) => {
@@ -112,6 +129,8 @@ Deno.serve(async (req) => {
           ? parseEssPrograms(body, page.url)
           : page.parser === "spirit"
           ? await parseSpiritTenders(body, page.url)
+          : page.parser === "govsi"
+          ? await parseGovSiJavneObjave(body, page.url, page.provider || "Ministrstvo")
           : parseGrants(body, page.status, page.url);
 
         results.parsed += grants.length;
@@ -544,6 +563,108 @@ async function parseSpiritTenders(jsonText: string, sourcePageUrl: string): Prom
   }
 
   return grants;
+}
+
+// Vsa ministrstva na gov.si delijo isto CMS predlogo za "javne objave": seznamska stran je
+// HTML tabela (<td class="td-title/td-published-date/td-due-date">), posamezna objava pa
+// <article class="tender-page"> z besedilnimi razdelki (Namen, Predmet, Upravičenci ...).
+// En parser torej pokrije poljubno število ministrstev — glej PAGES zgoraj za dodajanje novih.
+// Podrobno vsebino (za raw_summary) pridobimo samo za objave, ki še niso potekle, da ne
+// nalagamo strežnika z nepotrebnimi klici za zaprte razpise.
+async function parseGovSiJavneObjave(html: string, sourcePageUrl: string, provider: string): Promise<Record<string, unknown>[]> {
+  const GOVSI_BASE = "https://www.gov.si";
+  const rows = [...html.matchAll(/<tr>([\s\S]*?)<\/tr>/g)];
+
+  type Row = { title: string; path: string; deadlineAt: string | null };
+  const parsedRows: Row[] = [];
+
+  for (const [, row] of rows) {
+    const titleMatch = row.match(/td-title[\s\S]*?<a href="([^"]+)">([^<]+)<\/a>/);
+    if (!titleMatch) continue;
+
+    const title = cleanHtmlText(titleMatch[2]);
+    if (!/razpis|poziv|povabilo|vabilo|vavčer|natečaj/i.test(title)) continue;
+
+    const dueMatch = row.match(/td-due-date[\s\S]*?cell">([^<]*)<\/div>/);
+    const deadlineAt = dueMatch ? parseDeadlineDate(dueMatch[1]) : null;
+
+    parsedRows.push({ title, path: titleMatch[1], deadlineAt });
+  }
+
+  const grants: Record<string, unknown>[] = [];
+  const CONCURRENCY = 6;
+  const now = Date.now();
+  const open = parsedRows.filter(r => !r.deadlineAt || new Date(r.deadlineAt).getTime() >= now);
+  const closed = parsedRows.filter(r => r.deadlineAt && new Date(r.deadlineAt).getTime() < now);
+
+  for (let i = 0; i < open.length; i += CONCURRENCY) {
+    const batch = open.slice(i, i + CONCURRENCY);
+    const detailed = await Promise.all(batch.map(async (r) => {
+      let rawSummary: string | null = null;
+      try {
+        const url = r.path.startsWith("http") ? r.path : `${GOVSI_BASE}${r.path}`;
+        const detailRes = await fetch(url, { headers: { "User-Agent": "AI-Razpisi-Bot/1.0 grant aggregator" } });
+        if (detailRes.ok) {
+          const detailHtml = await detailRes.text();
+          const article = detailHtml.match(/<article class="tender-page">([\s\S]*?)<\/article>/);
+          rawSummary = cleanHtmlText(article ? article[1] : detailHtml).substring(0, 3000) || null;
+        }
+      } catch { /* podrobnosti niso na voljo, nadaljujemo samo s podatki iz seznama */ }
+      return { r, rawSummary };
+    }));
+
+    for (const { r, rawSummary } of detailed) {
+      grants.push(buildGovSiGrant(r, rawSummary, provider, sourcePageUrl, "open"));
+    }
+  }
+
+  // Zaprte objave: obdržimo samo osnovne podatke (naslov/rok), brez dodatnih klicev za vsebino.
+  for (const r of closed) {
+    grants.push(buildGovSiGrant(r, null, provider, sourcePageUrl, "closed"));
+  }
+
+  return grants;
+}
+
+function buildGovSiGrant(
+  row: { title: string; path: string; deadlineAt: string | null },
+  rawSummary: string | null,
+  provider: string,
+  sourcePageUrl: string,
+  status: string
+): Record<string, unknown> {
+  const sourceUrl = row.path.startsWith("http") ? row.path : `https://www.gov.si${row.path}`;
+  const text = row.title + " " + (rawSummary || "");
+  const qualityFlags = [row.deadlineAt ? null : "missing_deadline"].filter(Boolean);
+
+  return {
+    title: row.title,
+    provider,
+    source_url: sourceUrl,
+    status,
+    published_at: null,
+    deadline_at: row.deadlineAt,
+    is_de_minimis: /de minimis/i.test(text),
+    max_aid_amount: parseLargestAmount(rawSummary),
+    funding_rate: parseFundingRate(rawSummary || ""),
+    eligible_company_sizes: extractCompanySizes(text),
+    eligible_regions: extractRegions(text),
+    eligible_sectors: extractTags(text),
+    eligible_costs: [],
+    investment_types: extractTags(text),
+    raw_summary: rawSummary,
+    plain_language_summary: null,
+    requirements: null,
+    required_documents: [],
+    raw_payload: {
+      source: "gov.si",
+      source_page_url: sourcePageUrl,
+      scraped_at: new Date().toISOString(),
+      quality_flags: qualityFlags,
+      quality_status: qualityFlags.length ? "needs_review" : "verified",
+    },
+    last_checked_at: new Date().toISOString(),
+  };
 }
 
 function parseArisGrants(html: string, sourcePageUrl: string, defaultStatus: string): Record<string, unknown>[] {
