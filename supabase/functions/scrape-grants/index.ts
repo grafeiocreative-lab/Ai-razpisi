@@ -69,6 +69,10 @@ Deno.serve(async (req) => {
       errors: [] as string[],
     };
     const sourceStats: Record<string, { parsed: number; errors: string[] }> = {};
+    // Šteje strani, ki se sploh niso prebrale (HTTP napaka ali izjema pri fetchu/parsanju) —
+    // to je edini pravi "izpad" znak. Napake pri posameznem razpisu (vrstica 121+) ali AI
+    // povzetku (spodaj) so pričakovane občasne napake enega zapisa, ne izpad celega vira.
+    let pageFailures = 0;
 
     results.closed_expired = await closeExpiredGrants(supabase);
 
@@ -86,6 +90,7 @@ Deno.serve(async (req) => {
           const message = `${page.url}: HTTP ${res.status}`;
           results.errors.push(message);
           sourceStats[page.source].errors.push(message);
+          pageFailures++;
           continue;
         }
 
@@ -147,6 +152,7 @@ Deno.serve(async (req) => {
         const message = `${page.url}: ${String(err)}`;
         results.errors.push(message);
         sourceStats[page.source].errors.push(message);
+        pageFailures++;
       }
     }
 
@@ -171,7 +177,11 @@ Deno.serve(async (req) => {
     }
 
     return json({
-      ok: results.errors.length === 0,
+      // "ok" = teden ni popolnoma odpovedal (vsaj ena stran se je prebrala). Posamezne napake
+      // pri enem razpisu ali enem AI povzetku so v `errors` za vpogled, a ne sesujejo statusa
+      // celega dnevnega teka — sicer en sam manjkajoč AI povzetek javi "failed" GitHub Actionu,
+      // čeprav se je večina podatkov pravilno osvežila.
+      ok: pageFailures < PAGES.length,
       ...results,
       sources: sourceStats,
     });
