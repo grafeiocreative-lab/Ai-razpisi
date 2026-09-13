@@ -34,10 +34,13 @@ const PAGES = [
     status: "upcoming",
   },
   {
+    // Prej ročno vpisan seznam 7 spodbud (nikoli se ni osvežil). Najden pravi, javen
+    // TYPO3 JSON endpoint za ZRSZ "Iskalnik po finančnih spodbudah" (id/type parametra
+    // sta iz njihove Angular aplikacije, ne dokumentirana javno, a stabilna in brez ključa) —
+    // pravi naslovi, roki, zneski in pristojna institucija za vseh ~17 programov.
     source: "ess",
     parser: "ess",
-    // ESS stran z opisom vseh zaposlovalnih spodbud
-    url: "https://www.ess.gov.si/delodajalci/financne-spodbude/predstavitev-spodbud-za-zaposlitev/",
+    url: "https://www.ess.gov.si/?id=351&type=871",
     status: "open",
   },
   {
@@ -441,47 +444,60 @@ function parseSpsPosts(jsonText: string, sourcePageUrl: string): Record<string, 
   return grants;
 }
 
-function parseEssPrograms(html: string, sourcePageUrl: string): Record<string, unknown>[] {
-  // ESS stran lista zaposlovalnih spodbud, vsaka spodbuda je en razpis brez roka
-  const ESS_PROGRAMS = [
-    { title: "Subvencija za zaposlitev 2026", summary: "Subvencija delodajalcem za zaposlitev brezposelnih oseb, ki so prijavljene v evidenci brezposelnih. Spodbuda pokriva del stroškov plače.", sectors: ["Zaposlovanje"] },
-    { title: "Trajno zaposlovanje mladih 2026", summary: "Subvencija za trajno zaposlitev mladih do 29 let, prijavljenih na ZRSZ. Delodajalec prejme subvencijo za kritje dela stroškov zaposlitve.", sectors: ["Zaposlovanje"] },
-    { title: "Usposabljanje na delovnem mestu 2026", summary: "Sofinanciranje usposabljanja brezposelnih oseb pri delodajalcu z namenom pridobitve novih znanj in kompetenc za trg dela.", sectors: ["Zaposlovanje", "Izobraževanje"] },
-    { title: "Delovni preizkus 2026", summary: "Program omogoča delodajalcu brezplačno preizkušanje brezposelne osebe na delovnem mestu pred sklenitvijo delovnega razmerja.", sectors: ["Zaposlovanje"] },
-    { title: "Javna dela 2026", summary: "Sofinanciranje zaposlitev v programih javnih del, namenjenih socialni vključenosti in aktivaciji dolgotrajno brezposelnih oseb.", sectors: ["Zaposlovanje"] },
-    { title: "Vračilo prispevkov za prvo zaposlitev", summary: "Delodajalec, ki sklene pogodbo o zaposlitvi z osebo, ki se prvič zaposluje, je oproščen plačila prispevkov za pokojninsko in invalidsko zavarovanje.", sectors: ["Zaposlovanje"] },
-    { title: "Oprostitev prispevkov za starejše delavce", summary: "Delodajalci so oproščeni plačila nekaterih prispevkov za delavce, starejše od 55 let. Ukrep spodbuja zaposlovanje starejših.", sectors: ["Zaposlovanje"] },
-  ];
+// ZRSZ "Iskalnik po finančnih spodbudah" — realen, javen JSON vir (najden z opazovanjem
+// omrežnih klicev njihove Angular aplikacije: isk-fis-www-prod-estoritve.apps.ess.gov.si
+// nazadnje pokliče nazaj na glavno TYPO3 stran z ?id=351&type=871, ki vrne {"list":[...]}).
+// Nadomešča prejšnji ročno vpisan seznam 7 spodbud, ki se ni nikoli osvežil.
+const ESS_INSTITUTIONS: Record<string, string> = {
+  ZRSZ: "Zavod Republike Slovenije za zaposlovanje",
+  FURS: "Finančna uprava Republike Slovenije",
+  ZPIZ: "Zavod za pokojninsko in invalidsko zavarovanje Slovenije",
+};
 
+function parseEssPrograms(jsonText: string, sourcePageUrl: string): Record<string, unknown>[] {
+  const parsed = JSON.parse(jsonText);
+  const items: Array<Record<string, unknown>> = Array.isArray(parsed?.list) ? parsed.list : [];
   const scraped = new Date().toISOString();
-  return ESS_PROGRAMS.map(p => ({
-    title: p.title,
-    provider: "Zavod Republike Slovenije za zaposlovanje",
-    source_url: sourcePageUrl,
-    status: "open",
-    published_at: null,
-    deadline_at: null,
-    is_de_minimis: true,
-    max_aid_amount: null,
-    funding_rate: null,
-    eligible_company_sizes: ["micro", "small", "medium", "large"],
-    eligible_regions: [],
-    eligible_sectors: p.sectors,
-    eligible_costs: [],
-    investment_types: ["Zaposlovanje"],
-    raw_summary: p.summary,
-    plain_language_summary: null,
-    requirements: null,
-    required_documents: [],
-    raw_payload: {
-      source: "ess.gov.si",
-      source_page_url: sourcePageUrl,
-      scraped_at: scraped,
-      quality_flags: ["missing_deadline"],
-      quality_status: "needs_review",
-    },
-    last_checked_at: scraped,
-  }));
+
+  return items.map((it) => {
+    const title = cleanHtmlText(String(it.nazivSpodbude || ""));
+    const summary = cleanHtmlText(String(it.kratekOpisSpodbude || it.opisSpodbude || ""));
+    const sourceUrl = String(it.linkElement || sourcePageUrl);
+    const deadlineAt = parseDeadlineDate(String(it.zakljucek || ""));
+    const text = title + " " + summary;
+    const institution = ESS_INSTITUTIONS[String(it.pristojnaInstitucija || "")] || String(it.pristojnaInstitucija || "ZRSZ");
+    const qualityFlags = [deadlineAt ? null : "missing_deadline"].filter(Boolean);
+
+    return {
+      title,
+      provider: institution,
+      source_url: sourceUrl,
+      status: deadlineAt && new Date(deadlineAt).getTime() < Date.now() ? "closed" : "open",
+      published_at: parseDate(String(it.zacetek || "")),
+      deadline_at: deadlineAt,
+      is_de_minimis: true,
+      max_aid_amount: Number(it.visinaSpodbude) > 0 ? Number(it.visinaSpodbude) : null,
+      funding_rate: null,
+      eligible_company_sizes: ["micro", "small", "medium", "large"],
+      eligible_regions: [],
+      eligible_sectors: ["Zaposlovanje", ...extractTags(text)],
+      eligible_costs: [],
+      investment_types: ["Zaposlovanje"],
+      raw_summary: summary || null,
+      plain_language_summary: null,
+      requirements: null,
+      required_documents: [],
+      raw_payload: {
+        source: "ess.gov.si",
+        source_page_url: sourcePageUrl,
+        ess_uid: it.uid || null,
+        scraped_at: scraped,
+        quality_flags: qualityFlags,
+        quality_status: qualityFlags.length ? "needs_review" : "verified",
+      },
+      last_checked_at: scraped,
+    };
+  });
 }
 
 // SPIRIT Slovenija: javen, neavtenticiran JSON API (najden branjem njihovega Angular bundla,
