@@ -24,6 +24,8 @@ const fSerif="'Newsreader',Georgia,serif";
 // Pill (999) samo za semantične oznake (status/filter), ne kot privzet element.
 const radius={lg:14,md:10,sm:8,xs:6,pill:999};
 const tnum={fontVariantNumeric:"tabular-nums"};
+// Slovenski sklon ob številu: 1 razpis, 2 razpisa, 3 razpisi, 5 razpisov.
+const pl=(n,one,two,few,many)=>{const m=Math.abs(n)%100;return m===1?one:m===2?two:(m===3||m===4)?few:many;};
 
 function useIsMobile(){
   const get=()=>typeof window!=="undefined"&&window.matchMedia("(max-width: 760px)").matches;
@@ -128,7 +130,7 @@ function Nav({page,go,onStart,overlay=false}){
         {[["kako","Kako deluje"],["cenik","Cenik"]].map(([k,l])=>(
           <a key={k} onClick={()=>go(k)} style={{display:isMobile&&k==="kako"?"none":"inline",fontSize:14,color:page===k?c.olive:linkColor,fontWeight:page===k?600:500,cursor:"pointer",textDecoration:"none",borderBottom:page===k?`2px solid ${c.olive}`:"2px solid transparent",paddingBottom:2,transition:"color .3s ease"}}>{l}</a>
         ))}
-        <button onClick={onStart} style={{padding:isMobile?"8px 14px":"9px 22px",borderRadius:10,border:"none",background:solid?c.graphite:"rgba(127,150,86,0.82)",color:c.white,fontSize:isMobile?13:14,fontWeight:600,cursor:"pointer",fontFamily:f,whiteSpace:"nowrap",transition:"background .3s ease"}}>{isMobile?"Začni":"Začni brezplačno"}</button>
+        <button onClick={onStart} style={{padding:isMobile?"8px 14px":"9px 22px",borderRadius:10,border:"none",background:solid?c.graphite:"rgba(127,150,86,0.82)",color:c.white,fontSize:isMobile?13:14,fontWeight:600,cursor:"pointer",fontFamily:f,whiteSpace:"nowrap",transition:"background .3s ease"}}>{isMobile?"Začnite":"Začnite brezplačno"}</button>
       </div>
     </nav>
   );
@@ -153,7 +155,7 @@ function Footer(){
 function HeroVideo({go,onStart,grantCount}){
   const isMobile=useIsMobile();
   const reducedMotion=usePrefersReducedMotion();
-  const trustItems=[grantCount!==null?`${grantCount} razpisov`:"Aktualni razpisi","AI ujemanje","Pod 2 min do pregleda"];
+  const trustItems=[grantCount!==null?`${grantCount} ${pl(grantCount,"razpis","razpisa","razpisi","razpisov")}`:"Aktualni razpisi","AI ujemanje","Pod 2 min do pregleda"];
   // Mobile dobi namenski navpičen video (drug kader/crop), ne stisnjen desktop posnetek
   const videoBase=isMobile?"/hero/hero-mobile":"/hero/hero-desktop-v3";
   const posterSrc=isMobile?"/hero/hero-mobile-poster.jpg":"/hero/hero-desktop-v3-poster.jpg";
@@ -178,9 +180,9 @@ function HeroVideo({go,onStart,grantCount}){
           <span style={{fontSize:12,fontWeight:600,letterSpacing:".14em",textTransform:"uppercase",color:"#AEC98C"}}>AI platforma za slovenske razpise</span>
         </div>
         <h1 style={{fontFamily:fSerif,fontWeight:600,fontSize:isMobile?"clamp(42px,12vw,58px)":"clamp(36px,3.6vw,52px)",lineHeight:isMobile?1.02:1.16,color:"#F8F6EF",margin:isMobile?"0 0 18px":"0 0 20px"}}>Razpisi, ki ustrezajo<br/><span style={{color:"#C3DBA3"}}>vašemu podjetju.</span></h1>
-        <p style={{fontSize:isMobile?16:18,lineHeight:isMobile?1.5:1.55,color:"#E4E1D6",maxWidth:540,margin:isMobile?"0 0 26px":"0 0 30px"}}>Vpišite matično številko. Sistem preveri vaše podjetje, de minimis prostor in pogoje razpisov ter izpostavi najbolj relevantne priložnosti.</p>
+        <p style={{fontSize:isMobile?16:18,lineHeight:isMobile?1.5:1.55,color:"#E4E1D6",maxWidth:540,margin:isMobile?"0 0 26px":"0 0 30px"}}>Vpišite matično številko. Sistem preveri podjetje, de minimis prostor in pogoje razpisov ter izpostavi najbolj relevantne priložnosti.</p>
         <div style={{display:"flex",flexDirection:isMobile?"column":"row",flexWrap:"wrap",gap:isMobile?12:14,marginBottom:isMobile?28:30}}>
-          <button onClick={onStart} className="hero-cta-primary" style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,height:isMobile?54:56,width:isMobile?"100%":"auto",padding:"0 30px",borderRadius:10,border:"none",background:c.olive,color:"#fff",fontSize:16,fontWeight:600,cursor:"pointer",fontFamily:f}}>Preveri razpise <ArrowRight size={18} className="hero-cta-arrow"/></button>
+          <button onClick={onStart} className="hero-cta-primary" style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,height:isMobile?54:56,width:isMobile?"100%":"auto",padding:"0 30px",borderRadius:10,border:"none",background:c.olive,color:"#fff",fontSize:16,fontWeight:600,cursor:"pointer",fontFamily:f}}>Preverite razpise <ArrowRight size={18} className="hero-cta-arrow"/></button>
           <button onClick={()=>go("kako")} className="hero-cta-secondary" style={{display:"flex",alignItems:"center",justifyContent:"center",height:isMobile?52:56,width:isMobile?"100%":"auto",padding:"0 26px",borderRadius:10,border:"1.5px solid rgba(247,244,236,0.4)",background:"rgba(247,244,236,0.06)",color:"#F7F4EC",fontSize:16,fontWeight:600,cursor:"pointer",fontFamily:f}}>Kako deluje</button>
         </div>
         <div style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:isMobile?10:14,opacity:.72,fontSize:13,color:"#E7E4DA"}}>
@@ -226,7 +228,7 @@ function Landing({go,onStart}){
             quoteSource="Uradni vir"
             quote="„Upravičeni stroški so stroški nakupa opredmetenih in neopredmetenih osnovnih sredstev, ki so neposredno povezani z izvajanjem operacije …"
             explanationLabel="AI razlaga"
-            explanation="Kupite lahko novo opremo ali programsko opremo za digitalizacijo. Sistem pokrije stroške do 75.000 €. Pogoj: oprema mora biti nova."
+            explanation="Kupite lahko novo opremo ali programsko opremo za digitalizacijo. Razpis pokrije stroške do 75.000 €. Pogoj: oprema mora biti nova."
           />
         </div>
         <div style={{textAlign:"center",marginTop:28}}><a onClick={()=>go("kako")} style={{fontSize:14,fontWeight:600,color:c.olive,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>Več o delovanju platforme <ArrowRight size={16}/></a></div>
@@ -242,7 +244,7 @@ function Landing({go,onStart}){
               <div key={n} style={{padding:"20px 24px",borderRadius:14,border:`1px solid ${c.border}`,background:c.ivory,minWidth:150,textAlign:"center"}}><div style={{fontSize:11,fontWeight:700,color:c.t3,letterSpacing:".04em",marginBottom:8}}>{n}</div><div style={{fontSize:24,fontWeight:800,color:c.t1,marginBottom:4,whiteSpace:"nowrap"}}>{p}</div><div style={{fontSize:12,color:c.t2}}>{d}</div></div>
             ))}
           </div>
-          <div style={{textAlign:"center",marginTop:28}}><a onClick={()=>go("cenik")} style={{fontSize:14,fontWeight:600,color:c.olive,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>Poglej celoten cenik <ArrowRight size={16}/></a></div>
+          <div style={{textAlign:"center",marginTop:28}}><a onClick={()=>go("cenik")} style={{fontSize:14,fontWeight:600,color:c.olive,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>Poglejte celoten cenik <ArrowRight size={16}/></a></div>
         </div>
       </section>
 
@@ -250,7 +252,7 @@ function Landing({go,onStart}){
       <section style={{...sec,padding:isMobile?"56px 16px":"80px 32px",textAlign:"center"}}>
         <h2 style={{fontSize:30,fontWeight:600,color:c.t1,marginBottom:12,fontFamily:fSerif}}>Pripravljeni?</h2>
         <p style={{fontSize:16,color:c.t2,marginBottom:32}}>Vpišite matično številko in v 2 minutah vidite, kaj je na voljo.</p>
-        <button onClick={onStart} style={{display:"inline-flex",alignItems:"center",gap:10,padding:"16px 36px",borderRadius:14,border:"none",background:c.graphite,color:c.white,fontSize:16,fontWeight:700,cursor:"pointer",fontFamily:f}}>Začni brezplačno <ArrowRight size={20}/></button>
+        <button onClick={onStart} style={{display:"inline-flex",alignItems:"center",gap:10,padding:"16px 36px",borderRadius:14,border:"none",background:c.graphite,color:c.white,fontSize:16,fontWeight:700,cursor:"pointer",fontFamily:f}}>Začnite brezplačno <ArrowRight size={20}/></button>
       </section>
       <Footer/>
     </div>
@@ -278,23 +280,23 @@ function HowItWorks({go,onStart}){
       <section style={{...sec,padding:isMobile?"0 16px 48px":"0 32px 64px"}}>
         {[
           {num:"01",title:"Vpišite eno številko",Icon:Search,color:"c-teal",
-            desc:"Vpišete matično (10 mest) ali davčno (8 mest) številko. Sistem avtomatsko prepozna format in sproži pridobivanje podatkov iz treh virov.",
+            desc:"Vpišete matično (10 mest) ali davčno (8 mest) številko. Sistem samodejno prepozna format in poišče podatke v treh virih.",
             detail:[
               {src:"AJPES poslovni register",what:"Firma, naslov, regija, pravna oblika",Icon:Database},
               {src:"JODP (Ministrstvo za finance)",what:"Celotna zgodovina prejetih državnih in de minimis pomoči z zneski in datumi",Icon:Shield},
-              {src:"VIES (EU)",what:"Validacija davčne številke in potrditev aktivnega zavezanca",Icon:Globe},
+              {src:"VIES (EU)",what:"Preverjanje davčne številke in potrditev, da je zavezanec aktiven",Icon:Globe},
             ]},
           {num:"02",title:"Potrdite profil",Icon:Check,color:"c-olive",
             desc:"Vse je predizpolnjeno. Preverite podatke iz registra, potrdite de minimis stanje in dodajte 3 številke za KMU klasifikacijo.",
             detail:[
               {src:"Avtomatsko iz registra",what:"Firma, naslov, regija in pravna oblika se prenesejo neposredno iz registra",Icon:FileSearch},
               {src:"KMU klasifikacija",what:"Vpišete število zaposlenih, letni prihodek in bilančno vsoto. Sistem izračuna, ali ste mikro, malo ali srednje podjetje.",Icon:BarChart3},
-              {src:"Strateški interesi",what:"Izberete področja, ki so pomembna za vaše podjetje: digitalizacija, izvoz, zeleni prehod, razvoj in raziskave …",Icon:Layers},
+              {src:"Strateški interesi",what:"Izberete področja, ki so pomembna za podjetje: digitalizacija, izvoz, zeleni prehod, razvoj in raziskave …",Icon:Layers},
             ]},
-          {num:"03",title:"Prejmite priložnosti",Icon:TrendingUp,color:"c-green",
-            desc:"Vaš profil primerjamo z vsemi odprtimi razpisi. V nekaj sekundah vidite, kateri vam ustrezajo in koliko.",
+          {num:"03",title:"Poglejte priložnosti",Icon:TrendingUp,color:"c-green",
+            desc:"Profil primerjamo z vsemi odprtimi razpisi. V nekaj sekundah vidite, kateri vam ustrezajo in koliko.",
             detail:[
-              {src:"Strateški interesi",what:"Vaši izbrani cilji (digitalizacija, izvoz, zeleni prehod …) se primerjajo z namenom razpisa.",Icon:Layers},
+              {src:"Strateški interesi",what:"Izbrani cilji (digitalizacija, izvoz, zeleni prehod …) se primerjajo z namenom razpisa.",Icon:Layers},
               {src:"KMU, regija in de minimis",what:"Velikost podjetja, lokacija in preostali de minimis prostor se preverijo proti pogojem razpisa.",Icon:Shield},
               {src:"AI razlaga",what:"Uradno besedilo razpisa prevedemo v razumljiv jezik, brez pravniškega žargona.",Icon:MessageSquare},
             ]},
@@ -322,7 +324,7 @@ function HowItWorks({go,onStart}){
       <section style={{background:c.white,padding:"64px 0"}}>
         <div style={sec}>
           <h2 style={{fontSize:28,fontWeight:700,color:c.t1,marginBottom:8}}>De minimis sledenje</h2>
-          <p style={{fontSize:15,color:c.t2,lineHeight:1.6,marginBottom:32,maxWidth:640}}>Platforma avtomatsko pridobi podatke o prejetih državnih pomočeh iz JODP registra Ministrstva za finance. Na podlagi matične številke vidite celotno zgodovino in preostali prostor do zakonske meje.</p>
+          <p style={{fontSize:15,color:c.t2,lineHeight:1.6,marginBottom:32,maxWidth:640}}>Platforma samodejno pridobi podatke o prejetih državnih pomočeh iz JODP registra Ministrstva za finance. Na podlagi matične številke vidite celotno zgodovino in preostali prostor do zakonske meje.</p>
           <div style={{display:"flex",flexDirection:isMobile?"column":"row",gap:isMobile?20:32}}>
             {[
               {n:"300.000 €",d:"Nova meja de minimis pomoči po Uredbi EU 2023/2831, veljavna od 1. 1. 2024."},
@@ -341,13 +343,13 @@ function HowItWorks({go,onStart}){
       {/* Matching osi */}
       <section style={{...sec,padding:isMobile?"48px 16px":"64px 32px"}}>
         <h2 style={{fontSize:28,fontWeight:700,color:c.t1,marginBottom:8}}>4 merila ujemanja</h2>
-        <p style={{fontSize:15,color:c.t2,lineHeight:1.6,marginBottom:32,maxWidth:640}}>Vsak razpis primerjamo z vašim profilom po štirih merilih. Rezultat je odstotek ujemanja in seznam pogojev, ki pove, kje ustrezate in kje ne.</p>
+        <p style={{fontSize:15,color:c.t2,lineHeight:1.6,marginBottom:32,maxWidth:640}}>Vsak razpis primerjamo s profilom po štirih merilih. Rezultat je odstotek ujemanja in seznam pogojev, ki pove, kje ustrezate in kje ne.</p>
         <div style={{borderTop:`1px solid ${c.border}`}}>
           {[
-            {n:"Strateški interesi",d:"Vaši izbrani cilji (digitalizacija, izvoz, zeleni prehod, razvoj …) se primerjajo z namenom razpisa.",Icon:Layers},
+            {n:"Strateški interesi",d:"Izbrani cilji (digitalizacija, izvoz, zeleni prehod, razvoj …) se primerjajo z namenom razpisa.",Icon:Layers},
             {n:"Velikost podjetja (KMU)",d:"Mikro, malo ali srednje podjetje po EU definiciji. Večina razpisov je namenjenih samo KMU.",Icon:Building2},
             {n:"Regija",d:"Vzhodna ali Zahodna Slovenija. Nekateri razpisi so omejeni na eno od regij.",Icon:MapPin},
-            {n:"De minimis prostor",d:"Preostali prostor do 300.000 €. Če razpis presega vaš prostor, se to pozna pri ujemanju.",Icon:Shield},
+            {n:"De minimis prostor",d:"Preostali prostor do 300.000 €. Če razpis presega ta prostor, se to pozna pri ujemanju.",Icon:Shield},
           ].map(a=>(
             <div key={a.n} style={{display:"flex",alignItems:isMobile?"flex-start":"center",gap:14,padding:"16px 2px",borderBottom:`1px solid ${c.border}`}}>
               <a.Icon size={18} color={c.olive} strokeWidth={1.75} style={{flexShrink:0,marginTop:isMobile?2:0}}/>
@@ -359,8 +361,8 @@ function HowItWorks({go,onStart}){
 
       {/* CTA */}
       <section style={{...sec,padding:"48px 32px 80px",textAlign:"center"}}>
-        <button onClick={onStart} style={{display:"inline-flex",alignItems:"center",gap:10,padding:"16px 36px",borderRadius:radius.md,border:"none",background:c.graphite,color:c.white,fontSize:16,fontWeight:700,cursor:"pointer",fontFamily:f}}>Začni brezplačno <ArrowRight size={20}/></button>
-        <div style={{marginTop:12}}><a onClick={()=>go("cenik")} style={{fontSize:14,fontWeight:600,color:c.olive,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>Poglej cenik <ArrowRight size={16}/></a></div>
+        <button onClick={onStart} style={{display:"inline-flex",alignItems:"center",gap:10,padding:"16px 36px",borderRadius:radius.md,border:"none",background:c.graphite,color:c.white,fontSize:16,fontWeight:700,cursor:"pointer",fontFamily:f}}>Začnite brezplačno <ArrowRight size={20}/></button>
+        <div style={{marginTop:12}}><a onClick={()=>go("cenik")} style={{fontSize:14,fontWeight:600,color:c.olive,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>Poglejte cenik <ArrowRight size={16}/></a></div>
       </section>
       <Footer/>
     </div>
@@ -371,13 +373,13 @@ function HowItWorks({go,onStart}){
 /*  CENIK (Pricing subpage)                           */
 /* ═══════════════════════════════════════════════════ */
 const plans=[
-  {name:"Brezplačno",price:"0",period:"za vedno",desc:"Pregled razpisov brez personalizacije.",hl:false,cta:"Začni brezplačno",
+  {name:"Brezplačno",price:"0",period:"za vedno",desc:"Pregled razpisov brez personalizacije.",hl:false,cta:"Začnite brezplačno",
    features:["Pregled vseh razpisov","Osnovni filtri","Iskanje po ključnih besedah"]},
-  {name:"Osnovno",price:"19",period:"/ mesec",desc:"Za podjetnike, ki želijo vedeti, kaj je na voljo.",hl:false,cta:"Naroči se",
+  {name:"Osnovno",price:"19",period:"/ mesec",desc:"Za podjetnike, ki želijo vedeti, kaj je na voljo.",hl:false,cta:"Naročite se",
    features:["Vse iz Brezplačnega","1 profil podjetja","Odstotek ujemanja za vsak razpis","Opozorila za bližajoče se roke","De minimis sledenje (JODP)"]},
-  {name:"Profesionalno",price:"49",period:"/ mesec",desc:"Za resen pristop k razpisom.",hl:true,cta:"Naroči se",
-   features:["Vse iz Osnovnega","AI prevod v pogovorni jezik","AI pomočnik (vprašaj karkoli)","Koledar rokov","Izvoz poročil (PDF)","Prioritetna podpora"]},
-  {name:"Za svetovalce",price:"99",period:"/ mesec",desc:"Upravljajte razpise za več strank hkrati.",hl:false,cta:"Naroči se",
+  {name:"Profesionalno",price:"49",period:"/ mesec",desc:"Za resen pristop k razpisom.",hl:true,cta:"Naročite se",
+   features:["Vse iz Osnovnega","AI prevod v pogovorni jezik","AI pomočnik (odgovori na vsa vprašanja)","Koledar rokov","Izvoz poročil (PDF)","Prioritetna podpora"]},
+  {name:"Za svetovalce",price:"99",period:"/ mesec",desc:"Upravljajte razpise za več strank hkrati.",hl:false,cta:"Naročite se",
    features:["Vse iz Profesionalnega","Do 10 profilov podjetij","Skupinski pregled","De minimis pregled za vse","API dostop","Osebna uvedba"]},
 ];
 
@@ -418,8 +420,8 @@ function Pricing({go,onStart}){
 
   const faqs=[
     ["Ali je res brezplačno?","Da. Brezplačni paket omogoča pregled vseh razpisov in osnovne filtre brez omejitev. Ni časovne omejitve. Brez kreditne kartice."],
-    ["Kdaj bodo plačljivi paketi na voljo?","Trenutno še niso odprti za naročilo. Gumb 'Naroči se' zabeleži vaš interes. Za zgodnji dostop nam pišite na grafeio.creative@gmail.com."],
-    ["Kako deluje de minimis sledenje?","Sistem pridobi podatke iz JODP registra Ministrstva za finance na podlagi matične številke. Podatki so informativni, priporočamo potrditev z lastno evidenco."],
+    ["Kdaj bodo plačljivi paketi na voljo?","Trenutno še niso odprti za naročilo. Gumb „Naročite se“ zabeleži zanimanje. Za zgodnji dostop nam pišite na grafeio.creative@gmail.com."],
+    ["Kako deluje de minimis sledenje?","Sistem pridobi podatke iz JODP registra Ministrstva za finance na podlagi matične številke. Podatki so informativni, zato jih potrdite z lastno evidenco."],
   ];
 
   return(
@@ -452,11 +454,11 @@ function Pricing({go,onStart}){
                   </div>
                 ))}
               </div>
-              <button onClick={()=>p.cta==="Začni brezplačno"?onStart():registerInterest(p.name)} disabled={p.cta!=="Začni brezplačno"&&recorded[p.name]} style={{width:"100%",padding:"13px 0",borderRadius:radius.md,border:p.hl?"none":`1.5px solid ${c.border}`,background:p.hl?c.olive:c.white,color:p.hl?c.white:c.t1,fontSize:14,fontWeight:600,cursor:p.cta!=="Začni brezplačno"&&recorded[p.name]?"default":"pointer",fontFamily:f,opacity:p.cta!=="Začni brezplačno"&&recorded[p.name]?.6:1}}>{p.cta!=="Začni brezplačno"&&recorded[p.name]?"Zabeleženo ✓":p.cta}</button>
+              <button onClick={()=>p.cta==="Začnite brezplačno"?onStart():registerInterest(p.name)} disabled={p.cta!=="Začnite brezplačno"&&recorded[p.name]} style={{width:"100%",padding:"13px 0",borderRadius:radius.md,border:p.hl?"none":`1.5px solid ${c.border}`,background:p.hl?c.olive:c.white,color:p.hl?c.white:c.t1,fontSize:14,fontWeight:600,cursor:p.cta!=="Začnite brezplačno"&&recorded[p.name]?"default":"pointer",fontFamily:f,opacity:p.cta!=="Začnite brezplačno"&&recorded[p.name]?.6:1}}>{p.cta!=="Začnite brezplačno"&&recorded[p.name]?"Zabeleženo ✓":p.cta}</button>
             </div>
           ))}
         </div>
-        <p style={{textAlign:"center",fontSize:13,color:c.t3,marginTop:20}}>Vsi zneski brez DDV. Plačljivi paketi še niso odprti za naročilo, "Naroči se" zabeleži vaš interes.</p>
+        <p style={{textAlign:"center",fontSize:13,color:c.t3,marginTop:20}}>Vsi zneski brez DDV. Plačljivi paketi še niso odprti za naročilo, gumb „Naročite se“ pa samo zabeleži zanimanje.</p>
       </section>
 
       {/* Comparison table */}
@@ -518,7 +520,7 @@ function Pricing({go,onStart}){
 
       {/* CTA */}
       <section style={{...sec,padding:"0 32px 80px",textAlign:"center"}}>
-        <button onClick={onStart} style={{display:"inline-flex",alignItems:"center",gap:10,padding:"16px 36px",borderRadius:radius.md,border:"none",background:c.olive,color:c.white,fontSize:16,fontWeight:700,cursor:"pointer",fontFamily:f,boxShadow:`0 4px 24px ${c.olive}35`}}>Začni brezplačno <ArrowRight size={20}/></button>
+        <button onClick={onStart} style={{display:"inline-flex",alignItems:"center",gap:10,padding:"16px 36px",borderRadius:radius.md,border:"none",background:c.olive,color:c.white,fontSize:16,fontWeight:700,cursor:"pointer",fontFamily:f,boxShadow:`0 4px 24px ${c.olive}35`}}>Začnite brezplačno <ArrowRight size={20}/></button>
       </section>
       <Footer/>
     </div>
@@ -577,24 +579,24 @@ function Onboarding({onComplete,onBack}){
   const btn={width:"100%",height:52,borderRadius:radius.md,border:"none",background:c.graphite,color:c.white,fontSize:15,fontWeight:600,fontFamily:f,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8};
   const co=ajpesResult?.company;const mc={name:co?.company_name||"Podjetje ni najdeno v PRS cache",maticna:co?.registration_number||iv,taxNumber:co?.tax_number||"—",address:co?.address||"—",region:co?.region||co?.municipality||"—",nuts:co?.nuts||"—",legalForm:co?.legal_form||"—",founded:co?.founded_year||"—",age:co?.founded_year?new Date().getFullYear()-co.founded_year:"—",skdMain:co?.main_activity_code||"—",skdMainLabel:co?.main_activity_name||"—",skdOther:[]};
 
-  if(step===1) return(<div style={{minHeight:"100vh",background:c.ivory,fontFamily:f,display:"flex",alignItems:"center",justifyContent:"center",padding:isMobile?"64px 16px 24px":24}}><div style={{width:"100%",maxWidth:480,textAlign:"center"}}><button onClick={onBack} style={{position:"absolute",top:20,left:20,background:"none",border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:6,fontSize:13,color:c.t2,fontFamily:f}}><ChevronLeft size={18}/>Nazaj</button><div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginBottom:32}}><img src={logoIcon} alt="AI Razpisi" style={{width:44,height:44,borderRadius:radius.sm}}/><span style={{fontSize:20,fontWeight:700,color:c.t1}}>RAZPISI</span></div><h1 style={{fontSize:isMobile?25:28,fontWeight:700,lineHeight:1.15,color:c.t1,marginBottom:8}}>Vpišite matično ali davčno<br/>številko podjetja</h1><p style={{fontSize:15,color:c.t2,marginBottom:32}}>Sistem avtomatsko pridobi podatke iz AJPES registra, de minimis evidenco in preveri davčni status.</p><div style={{display:"flex",flexDirection:isMobile?"column":"row",gap:10}}><input ref={ir} value={iv} onChange={e=>setIv(e.target.value.replace(/\D/g,""))} placeholder="npr. 1234567000" style={{flex:1,height:56,border:`2px solid ${iv.length>=8?c.olive:c.border}`,borderRadius:radius.md,padding:"0 20px",fontSize:17,fontFamily:"monospace",color:c.t1,background:c.white,outline:"none",letterSpacing:".04em",minWidth:0}} onKeyDown={e=>{if(e.key==="Enter"&&iv.length>=8)setStep(2);}}/><button onClick={()=>{if(iv.length>=8)setStep(2);}} style={{...btn,width:isMobile?"100%":"auto",padding:"0 28px",height:56,background:iv.length>=8?c.graphite:`${c.graphite}30`}}>Naprej <ArrowRight size={18}/></button></div>{iv.length===8&&<p style={{fontSize:12,color:c.olive,textAlign:"left",marginTop:8,marginBottom:0}}>Davčna številka (8 mest) — sistem jo samodejno pretvori v matično.</p>}{iv.length===10&&<p style={{fontSize:12,color:c.olive,textAlign:"left",marginTop:8,marginBottom:0}}>Matična številka (10 mest) — format je pravilen.</p>}{iv.length>0&&iv.length!==8&&iv.length!==10&&<p style={{fontSize:12,color:c.amber,textAlign:"left",marginTop:8,marginBottom:0}}>Davčna ima 8 mest · matična ima 10 mest ({iv.length}/8 ali 10).</p>}</div></div>);
+  if(step===1) return(<div style={{minHeight:"100vh",background:c.ivory,fontFamily:f,display:"flex",alignItems:"center",justifyContent:"center",padding:isMobile?"64px 16px 24px":24}}><div style={{width:"100%",maxWidth:480,textAlign:"center"}}><button onClick={onBack} style={{position:"absolute",top:20,left:20,background:"none",border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:6,fontSize:13,color:c.t2,fontFamily:f}}><ChevronLeft size={18}/>Nazaj</button><div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginBottom:32}}><img src={logoIcon} alt="AI Razpisi" style={{width:44,height:44,borderRadius:radius.sm}}/><span style={{fontSize:20,fontWeight:700,color:c.t1}}>RAZPISI</span></div><h1 style={{fontSize:isMobile?25:28,fontWeight:700,lineHeight:1.15,color:c.t1,marginBottom:8}}>Vpišite matično ali davčno<br/>številko podjetja</h1><p style={{fontSize:15,color:c.t2,marginBottom:32}}>Sistem samodejno pridobi podatke iz AJPES registra, de minimis evidenco in preveri davčni status.</p><div style={{display:"flex",flexDirection:isMobile?"column":"row",gap:10}}><input ref={ir} value={iv} onChange={e=>setIv(e.target.value.replace(/\D/g,""))} placeholder="npr. 1234567000" style={{flex:1,height:56,border:`2px solid ${iv.length>=8?c.olive:c.border}`,borderRadius:radius.md,padding:"0 20px",fontSize:17,fontFamily:"monospace",color:c.t1,background:c.white,outline:"none",letterSpacing:".04em",minWidth:0}} onKeyDown={e=>{if(e.key==="Enter"&&iv.length>=8)setStep(2);}}/><button onClick={()=>{if(iv.length>=8)setStep(2);}} style={{...btn,width:isMobile?"100%":"auto",padding:"0 28px",height:56,background:iv.length>=8?c.graphite:`${c.graphite}30`}}>Naprej <ArrowRight size={18}/></button></div>{iv.length===8&&<p style={{fontSize:12,color:c.olive,textAlign:"left",marginTop:8,marginBottom:0}}>Davčna številka (8 mest): sistem jo samodejno pretvori v matično.</p>}{iv.length===10&&<p style={{fontSize:12,color:c.olive,textAlign:"left",marginTop:8,marginBottom:0}}>Matična številka (10 mest): format je pravilen.</p>}{iv.length>0&&iv.length!==8&&iv.length!==10&&<p style={{fontSize:12,color:c.amber,textAlign:"left",marginTop:8,marginBottom:0}}>Davčna ima 8 mest · matična ima 10 mest ({iv.length}/8 ali 10).</p>}</div></div>);
 
-  if(step===2){const items=[{label:"AJPES poslovni register",sub:"Firma, naslov, pravna oblika",status:ajpesStatus},{label:"JODP de minimis evidenca",sub:"Prejete pomoči, zneski",status:jodpStatus}];return(<div style={{minHeight:"100vh",background:c.ivory,fontFamily:f,display:"flex",alignItems:"center",justifyContent:"center",padding:isMobile?"24px 16px":24}}><div style={{width:"100%",maxWidth:440,textAlign:"center"}}><Loader2 size={32} color={c.olive} strokeWidth={2} style={{animation:"spin 1.2s linear infinite",marginBottom:24}}/><h2 style={{fontSize:22,fontWeight:700,color:c.t1,marginBottom:32}}>Pridobivam podatke …</h2><div style={{textAlign:"left",borderTop:`1px solid ${c.border}`}}>{items.map((it,i)=>{const done=it.status!=="pending";const ok=it.status==="ok";return(<div key={i} style={{display:"flex",alignItems:"center",gap:14,padding:"14px 2px",borderBottom:`1px solid ${c.border}`,opacity:done?1:0.45,transition:"opacity .4s"}}><div style={{width:22,height:22,borderRadius:"50%",background:done?(ok?c.olive:c.amber):`${c.t3}30`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{done?(ok?<Check size={12} color={c.white} strokeWidth={2.5}/>:<X size={12} color={c.white} strokeWidth={2.5}/>):<span style={{width:6,height:6,borderRadius:"50%",background:c.t3,opacity:.5}}/>}</div><div style={{flex:1,minWidth:0}}><div style={{fontSize:14,fontWeight:600,color:c.t1}}>{it.label}</div><div style={{fontSize:12,color:c.t2}}>{it.sub}</div></div>{done&&<Status ok={ok} label={ok?"uspelo":"ni uspelo"}/>}</div>);})}</div><button onClick={()=>setStep(1)} style={{marginTop:32,background:"none",border:"none",cursor:"pointer",fontSize:13,color:c.t3,fontFamily:f,display:"inline-flex",alignItems:"center",gap:6}}><ChevronLeft size={15}/>Prekliči in nazaj</button></div><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>);}
+  if(step===2){const items=[{label:"AJPES poslovni register",sub:"Firma, naslov, pravna oblika",status:ajpesStatus},{label:"JODP de minimis evidenca",sub:"Prejete pomoči, zneski",status:jodpStatus}];return(<div style={{minHeight:"100vh",background:c.ivory,fontFamily:f,display:"flex",alignItems:"center",justifyContent:"center",padding:isMobile?"24px 16px":24}}><div style={{width:"100%",maxWidth:440,textAlign:"center"}}><Loader2 size={32} color={c.olive} strokeWidth={2} style={{animation:"spin 1.2s linear infinite",marginBottom:24}}/><h2 style={{fontSize:22,fontWeight:700,color:c.t1,marginBottom:32}}>Pridobivam podatke …</h2><div style={{textAlign:"left",borderTop:`1px solid ${c.border}`}}>{items.map((it,i)=>{const done=it.status!=="pending";const ok=it.status==="ok";return(<div key={i} style={{display:"flex",alignItems:"center",gap:14,padding:"14px 2px",borderBottom:`1px solid ${c.border}`,opacity:done?1:0.45,transition:"opacity .4s"}}><div style={{width:22,height:22,borderRadius:"50%",background:done?(ok?c.olive:c.amber):`${c.t3}30`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{done?(ok?<Check size={12} color={c.white} strokeWidth={2.5}/>:<X size={12} color={c.white} strokeWidth={2.5}/>):<span style={{width:6,height:6,borderRadius:"50%",background:c.t3,opacity:.5}}/>}</div><div style={{flex:1,minWidth:0}}><div style={{fontSize:14,fontWeight:600,color:c.t1}}>{it.label}</div><div style={{fontSize:12,color:c.t2}}>{it.sub}</div></div>{done&&<Status ok={ok} label={ok?"uspelo":"ni uspelo"}/>}</div>);})}</div><button onClick={()=>setStep(1)} style={{marginTop:32,background:"none",border:"none",cursor:"pointer",fontSize:13,color:c.t3,fontFamily:f,display:"inline-flex",alignItems:"center",gap:6}}><ChevronLeft size={15}/>Prekličite in se vrnite</button></div><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>);}
 
   return(<div style={{background:c.ivory,minHeight:"100vh",fontFamily:f}}><div style={{borderBottom:`1px solid ${c.border}`,background:c.white,padding:"16px 24px",display:"flex",alignItems:"center",gap:12,position:"sticky",top:0,zIndex:10}}><button onClick={()=>setStep(s=>s===3?1:Math.max(s-1,1))} style={{background:"none",border:"none",cursor:"pointer",padding:4}}><ChevronLeft size={20} color={c.t2}/></button><div style={{flex:1}}><div style={{fontSize:13,color:c.t2}}>Korak {step-2} od 4</div><div style={{fontSize:15,fontWeight:600,color:c.t1}}>{step===3?"Profil podjetja":step===4?"KMU klasifikacija":step===5?"Strateški interesi":"Rezultati"}</div></div><div style={{display:"flex",gap:6}}>{[3,4,5,6].map(s=><div key={s} style={{width:s===step?24:8,height:8,borderRadius:4,background:s<=step?c.olive:`${c.t3}30`}}/>)}</div></div><div style={{maxWidth:540,margin:"0 auto",padding:"28px 24px 60px"}}>
-    {step===3&&!co&&jodpResult!=null&&!jodpResult.company_in_jodp&&<div style={{textAlign:"center",padding:"48px 24px"}}><div style={{width:56,height:56,borderRadius:radius.lg,background:c.amberLight,display:"inline-flex",alignItems:"center",justifyContent:"center",marginBottom:16}}><X size={24} color={c.amber}/></div><h2 style={{fontSize:20,fontWeight:700,color:c.t1,marginBottom:8}}>{jodpResult.is_davcna?"Davčne številke nismo prepoznali":"Podjetja nismo našli"}</h2>{jodpResult.is_davcna&&jodpResult.vies_company?<><p style={{fontSize:14,color:c.t2,marginBottom:12}}>Davčna <strong>{iv}</strong> je veljavna — VIES evidenca jo pozna kot:</p><div style={{background:c.white,border:`1px solid ${c.border}`,borderRadius:radius.md,padding:"14px 18px",marginBottom:16,textAlign:"left"}}><div style={{fontSize:14,fontWeight:700,color:c.t1,marginBottom:4}}>{jodpResult.vies_company.name}</div><div style={{fontSize:12,color:c.t2}}>{jodpResult.vies_company.address}</div></div><p style={{fontSize:13,color:c.t3,marginBottom:28}}>To podjetje ni v naši lokalni bazi. Za nadaljevanje poiščite matično številko (10 mest) na <a href="https://www.ajpes.si" target="_blank" rel="noopener noreferrer" style={{color:c.olive,fontWeight:600}}>ajpes.si</a> in jo vnesite namesto davčne.</p></>:<><p style={{fontSize:14,color:c.t2,marginBottom:8}}>{jodpResult.is_davcna?<>Davčna <strong>{iv}</strong> ni bila najdena. Vnesite 10-mestno matično številko.</>:<>Številka <strong>{iv}</strong> ne obstaja v JODP evidenci.</>}</p><p style={{fontSize:13,color:c.t3,marginBottom:28}}>{jodpResult.is_davcna?"Matično najdete na ajpes.si ali poslovnem dokumentu.":"Preverite matično (10 mest) ali davčno (8 mest)."}</p></>}<button onClick={()=>setStep(1)} style={{display:"inline-flex",alignItems:"center",gap:8,padding:"12px 28px",borderRadius:radius.md,border:"none",background:c.graphite,color:c.white,fontSize:14,fontWeight:600,fontFamily:f,cursor:"pointer"}}><ChevronLeft size={16}/>Vpiši drugo številko</button></div>}
+    {step===3&&!co&&jodpResult!=null&&!jodpResult.company_in_jodp&&<div style={{textAlign:"center",padding:"48px 24px"}}><div style={{width:56,height:56,borderRadius:radius.lg,background:c.amberLight,display:"inline-flex",alignItems:"center",justifyContent:"center",marginBottom:16}}><X size={24} color={c.amber}/></div><h2 style={{fontSize:20,fontWeight:700,color:c.t1,marginBottom:8}}>{jodpResult.is_davcna?"Davčne številke nismo prepoznali":"Podjetja nismo našli"}</h2>{jodpResult.is_davcna&&jodpResult.vies_company?<><p style={{fontSize:14,color:c.t2,marginBottom:12}}>Davčna <strong>{iv}</strong> je veljavna. V evidenci VIES je vpisana kot:</p><div style={{background:c.white,border:`1px solid ${c.border}`,borderRadius:radius.md,padding:"14px 18px",marginBottom:16,textAlign:"left"}}><div style={{fontSize:14,fontWeight:700,color:c.t1,marginBottom:4}}>{jodpResult.vies_company.name}</div><div style={{fontSize:12,color:c.t2}}>{jodpResult.vies_company.address}</div></div><p style={{fontSize:13,color:c.t3,marginBottom:28}}>To podjetje ni v naši lokalni bazi. Za nadaljevanje poiščite matično številko (10 mest) na <a href="https://www.ajpes.si" target="_blank" rel="noopener noreferrer" style={{color:c.olive,fontWeight:600}}>ajpes.si</a> in jo vnesite namesto davčne.</p></>:<><p style={{fontSize:14,color:c.t2,marginBottom:8}}>{jodpResult.is_davcna?<>Davčna <strong>{iv}</strong> ni bila najdena. Vnesite 10-mestno matično številko.</>:<>Številka <strong>{iv}</strong> ne obstaja v JODP evidenci.</>}</p><p style={{fontSize:13,color:c.t3,marginBottom:28}}>{jodpResult.is_davcna?"Matično najdete na ajpes.si ali poslovnem dokumentu.":"Preverite matično (10 mest) ali davčno (8 mest)."}</p></>}<button onClick={()=>setStep(1)} style={{display:"inline-flex",alignItems:"center",gap:8,padding:"12px 28px",borderRadius:radius.md,border:"none",background:c.graphite,color:c.white,fontSize:14,fontWeight:600,fontFamily:f,cursor:"pointer"}}><ChevronLeft size={16}/>Vpišite drugo številko</button></div>}
     {step===3&&(co||!jodpResult||jodpResult.company_in_jodp)&&<><h2 style={{fontSize:22,fontWeight:700,color:c.t1,marginBottom:20}}>Profil podjetja</h2>
-      <DataList rows={[["Firma",mc.name],["Matična",mc.maticna],["Davčna",mc.taxNumber],["Naslov",mc.address],["Regija",mc.nuts&&mc.nuts!=="—"?`${mc.region} (${mc.nuts})`:mc.region],["Pravna oblika",mc.legalForm],["Ustanovljeno",mc.founded!=="—"?`${mc.founded} (${mc.age} let)`:"ni podatka"]]}/>
+      <DataList rows={[["Firma",mc.name],["Matična",mc.maticna],["Davčna",mc.taxNumber],["Naslov",mc.address],["Regija",mc.nuts&&mc.nuts!=="—"?`${mc.region} (${mc.nuts})`:mc.region],["Pravna oblika",mc.legalForm],["Ustanovljeno",mc.founded!=="—"?`${mc.founded} (${mc.age} ${pl(mc.age,"leto","leti","leta","let")})`:"ni podatka"]]}/>
       {mc.skdMain==="—"&&<div style={{marginTop:22,marginBottom:26}}>
         <div style={{fontSize:11,fontWeight:700,letterSpacing:".04em",color:c.t1,marginBottom:6}}>DEJAVNOST (SKD)</div>
-        <p style={{fontSize:12,color:c.t3,marginTop:0,marginBottom:10,lineHeight:1.5}}>AJPES prek brezplačnega vira ne vrne uradne dejavnosti. Izberite jo sami — s tem bo ujemanje z razpisi natančnejše.</p>
+        <p style={{fontSize:12,color:c.t3,marginTop:0,marginBottom:10,lineHeight:1.5}}>AJPES prek brezplačnega vira ne vrne uradne dejavnosti. Izberite jo sami, da bo ujemanje z razpisi natančnejše.</p>
         {skdCode?(
           <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",border:`1.5px solid ${c.olive}`,borderRadius:radius.md,background:c.oliveLight}}>
             <span style={{fontSize:13,fontWeight:600,color:c.t1,flex:1,minWidth:0}}>{skdCode} · {skdLabel}</span>
             <button onClick={()=>{setSkdCode("");setSkdLabel("");setSkdQuery("");}} style={{background:"none",border:"none",cursor:"pointer",padding:2,flexShrink:0}}><X size={16} color={c.t2}/></button>
           </div>
         ):(<>
-          <input value={skdQuery} onChange={e=>setSkdQuery(e.target.value)} placeholder="Išči dejavnost (npr. gostinstvo, programiranje, trgovina …)" style={{width:"100%",height:44,border:`1px solid ${c.border}`,borderRadius:radius.md,padding:"0 14px",fontSize:14,fontFamily:f,color:c.t1,background:c.white,outline:"none",boxSizing:"border-box"}}/>
+          <input value={skdQuery} onChange={e=>setSkdQuery(e.target.value)} placeholder="Iščite dejavnost (npr. gostinstvo, programiranje, trgovina …)" style={{width:"100%",height:44,border:`1px solid ${c.border}`,borderRadius:radius.md,padding:"0 14px",fontSize:14,fontFamily:f,color:c.t1,background:c.white,outline:"none",boxSizing:"border-box"}}/>
           {skdQuery.trim().length>=2&&(()=>{
             const q=skdQuery.trim().toLowerCase();
             const matches=skdList.filter(s=>s.descriptor_sl.toLowerCase().includes(q)||s.code.toLowerCase().includes(q)||s.sectionLabel.toLowerCase().includes(q)).slice(0,8);
@@ -624,8 +626,8 @@ function Onboarding({onComplete,onBack}){
       </div>
       <button onClick={()=>setStep(4)} style={btn}>Podatki so pravilni <ArrowRight size={18}/></button></>}
     {step===4&&<><h2 style={{fontSize:22,fontWeight:700,color:c.t1,marginBottom:24}}>KMU klasifikacija</h2>{[{l:"Zaposleni",v:emp,s:setEmp,u:""},{l:"Prihodek",v:rev,s:setRev,u:"M €"},{l:"Bilanca",v:bal,s:setBal,u:"M €"}].map(fi=>(<div key={fi.l} style={{marginBottom:14}}><label style={{fontSize:12,fontWeight:600,color:c.t2,display:"block",marginBottom:6}}>{fi.l}</label><div style={{display:"flex",gap:8}}><input value={fi.v} onChange={e=>fi.s(e.target.value)} style={{flex:1,height:48,border:`1px solid ${c.border}`,borderRadius:radius.md,padding:"0 16px",fontSize:16,fontFamily:f,color:c.t1,background:c.white,outline:"none",...tnum}}/>{fi.u&&<span style={{fontSize:13,color:c.t3,display:"flex",alignItems:"center"}}>{fi.u}</span>}</div></div>))}{(e>0||r>0)&&<div style={{display:"flex",alignItems:"center",gap:8,padding:"16px 2px",borderTop:`1px solid ${c.border}`,borderBottom:`1px solid ${c.border}`,margin:"16px 0"}}><span style={{width:7,height:7,borderRadius:"50%",background:kmuOk?c.olive:c.amber,flexShrink:0}}/><span style={{fontSize:14,fontWeight:700,color:c.t1}}>{kmu} PODJETJE</span></div>}<button onClick={()=>setStep(5)} style={{...btn,marginTop:16}}>Naprej <ArrowRight size={18}/></button></>}
-    {step===5&&<><h2 style={{fontSize:22,fontWeight:700,color:c.t1,marginBottom:8}}>Strateški interesi</h2><p style={{fontSize:13,color:c.t2,marginBottom:24}}>Izberite področja, pomembna za vaše podjetje — po njih bomo prilagodili ujemanje z razpisi.</p><div style={{display:"flex",flexWrap:"wrap",gap:10,marginBottom:32}}>{intOpts.map(({id,label,Icon})=>{const s=sel.has(id);return(<button key={id} onClick={()=>toggleI(id)} style={{display:"flex",alignItems:"center",gap:8,padding:"12px 20px",borderRadius:radius.md,fontSize:14,fontWeight:500,fontFamily:f,cursor:"pointer",background:s?c.oliveLight:c.white,border:`1.5px solid ${s?c.olive:c.border}`,color:s?c.olive:c.t2}}><Icon size={16}/>{label}</button>);})}</div><button onClick={()=>setStep(6)} style={btn}>Poišči priložnosti <ArrowRight size={18}/></button></>}
-    {step===6&&<><div style={{textAlign:"center",marginBottom:28}}><div style={{width:56,height:56,borderRadius:radius.lg,background:c.olive,display:"inline-flex",alignItems:"center",justifyContent:"center",marginBottom:16}}><Check size={26} color={c.white} strokeWidth={2.5}/></div><h2 style={{fontSize:24,fontWeight:700,color:c.t1}}>Profil pripravljen</h2></div><div style={{display:"flex",alignItems:"baseline",gap:12,padding:"18px 2px",borderTop:`1px solid ${c.border}`,borderBottom:`1px solid ${c.border}`,marginBottom:24}}><div style={{fontSize:34,fontWeight:800,color:c.t1,...tnum}}>{step6Stats!==null?step6Stats.total:"…"}</div><div><div style={{fontSize:15,fontWeight:600,color:c.t1}}>priložnosti z ujemanjem nad 60 %</div>{step6Stats?.top>0&&<div style={{fontSize:13,color:c.t2,...tnum}}>{step6Stats.top} z ujemanjem nad 80 %</div>}</div></div><button onClick={()=>onComplete({maticna:co?.registration_number||iv,kmu,dmFree,interests:[...sel],region:co?.region||null,skdLabel:skdLabel||null})} style={{...btn,height:56,background:c.olive,fontSize:16,fontWeight:700}}>Odpri priložnosti <ArrowRight size={20}/></button></>}
+    {step===5&&<><h2 style={{fontSize:22,fontWeight:700,color:c.t1,marginBottom:8}}>Strateški interesi</h2><p style={{fontSize:13,color:c.t2,marginBottom:24}}>Izberite področja, ki so pomembna za podjetje. Po njih bomo prilagodili ujemanje z razpisi.</p><div style={{display:"flex",flexWrap:"wrap",gap:10,marginBottom:32}}>{intOpts.map(({id,label,Icon})=>{const s=sel.has(id);return(<button key={id} onClick={()=>toggleI(id)} style={{display:"flex",alignItems:"center",gap:8,padding:"12px 20px",borderRadius:radius.md,fontSize:14,fontWeight:500,fontFamily:f,cursor:"pointer",background:s?c.oliveLight:c.white,border:`1.5px solid ${s?c.olive:c.border}`,color:s?c.olive:c.t2}}><Icon size={16}/>{label}</button>);})}</div><button onClick={()=>setStep(6)} style={btn}>Poiščite priložnosti <ArrowRight size={18}/></button></>}
+    {step===6&&<><div style={{textAlign:"center",marginBottom:28}}><div style={{width:56,height:56,borderRadius:radius.lg,background:c.olive,display:"inline-flex",alignItems:"center",justifyContent:"center",marginBottom:16}}><Check size={26} color={c.white} strokeWidth={2.5}/></div><h2 style={{fontSize:24,fontWeight:700,color:c.t1}}>Profil pripravljen</h2></div><div style={{display:"flex",alignItems:"baseline",gap:12,padding:"18px 2px",borderTop:`1px solid ${c.border}`,borderBottom:`1px solid ${c.border}`,marginBottom:24}}><div style={{fontSize:34,fontWeight:800,color:c.t1,...tnum}}>{step6Stats!==null?step6Stats.total:"…"}</div><div><div style={{fontSize:15,fontWeight:600,color:c.t1}}>priložnosti z ujemanjem nad 60 %</div>{step6Stats?.top>0&&<div style={{fontSize:13,color:c.t2,...tnum}}>{step6Stats.top} z ujemanjem nad 80 %</div>}</div></div><button onClick={()=>onComplete({maticna:co?.registration_number||iv,kmu,dmFree,interests:[...sel],region:co?.region||null,skdLabel:skdLabel||null})} style={{...btn,height:56,background:c.olive,fontSize:16,fontWeight:700}}>Odprite priložnosti <ArrowRight size={20}/></button></>}
   </div></div>);
 }
 
@@ -839,7 +841,7 @@ function AlertsView({grantItems=[],onSelect}){
   return(<div style={{flex:1,overflowY:isMobile?"visible":"auto",padding:isMobile?"18px 16px 28px":"28px 28px 40px"}}>
     <div style={{marginBottom:28}}>
       <h2 style={{fontSize:22,fontWeight:700,color:c.t1,marginBottom:4}}>Opozorila</h2>
-      <p style={{fontSize:13,color:c.t2}}>{total>0?`${total} opozoril za razpise z ujemanjem nad 60 %.`:"Trenutno ni opozoril za vaš profil."}</p>
+      <p style={{fontSize:13,color:c.t2}}>{total>0?`${total} ${pl(total,"opozorilo","opozorili","opozorila","opozoril")} za razpise z ujemanjem nad 60 %.`:"Trenutno ni opozoril."}</p>
     </div>
     <h3 style={{fontSize:15,fontWeight:700,color:c.t1,marginBottom:10}}>Bližajoči se roki</h3>
     <div style={{marginBottom:28}}>
@@ -891,11 +893,11 @@ function AiAssistantChat({companyId}){
   return(<div style={{flex:1,overflowY:isMobile?"visible":"hidden",display:"flex",flexDirection:"column",padding:isMobile?"18px 16px":"28px 28px"}}>
     <div style={{marginBottom:16,flexShrink:0}}>
       <h2 style={{fontSize:22,fontWeight:700,color:c.t1,marginBottom:4}}>AI pomočnik</h2>
-      <p style={{fontSize:13,color:c.t2}}>Vprašajte o razpisih ali svojem profilu. Pomočnik svetuje, ne more pa ničesar spremeniti v vašem profilu.</p>
+      <p style={{fontSize:13,color:c.t2}}>Vprašajte o razpisih ali svojem profilu. Pomočnik svetuje, v profilu pa ne more spremeniti ničesar.</p>
     </div>
     <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:14,marginBottom:16,paddingRight:4,minHeight:isMobile?260:0}}>
       {messages.length===0&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
-        <div style={{padding:"16px 18px",borderRadius:14,background:c.cream,fontSize:14,color:c.t1,lineHeight:1.5,alignSelf:"flex-start",maxWidth:520}}>Pozdravljeni. Lahko vam pomagam razumeti razpise ali predlagam, kateri najbolj ustreza vašemu podjetju. Kaj vas zanima?</div>
+        <div style={{padding:"16px 18px",borderRadius:14,background:c.cream,fontSize:14,color:c.t1,lineHeight:1.5,alignSelf:"flex-start",maxWidth:520}}>Pozdravljeni. Pomagam vam razumeti razpise in predlagam, kateri najbolj ustreza podjetju. Kaj vas zanima?</div>
         <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
           {suggestions.map(s=><button key={s} onClick={()=>send(s)} style={{padding:"8px 14px",borderRadius:10,border:`1px solid ${c.border}`,background:c.white,fontSize:12,color:c.t2,cursor:"pointer",fontFamily:f}}>{s}</button>)}
         </div>
@@ -911,7 +913,7 @@ function AiAssistantChat({companyId}){
     </div>
     <div style={{display:"flex",gap:8,flexShrink:0}}>
       <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();send();}}} placeholder="Vprašajte o razpisih …" style={{flex:1,height:48,border:`1px solid ${c.border}`,borderRadius:radius.md,padding:"0 16px",fontSize:14,fontFamily:f,color:c.t1,background:c.white,outline:"none"}}/>
-      <button onClick={()=>send()} disabled={loading||!input.trim()} style={{padding:"0 22px",height:48,borderRadius:radius.md,border:"none",background:loading||!input.trim()?c.border:c.graphite,color:c.white,fontSize:14,fontWeight:600,fontFamily:f,cursor:loading||!input.trim()?"default":"pointer"}}>Pošlji</button>
+      <button onClick={()=>send()} disabled={loading||!input.trim()} style={{padding:"0 22px",height:48,borderRadius:radius.md,border:"none",background:loading||!input.trim()?c.border:c.graphite,color:c.white,fontSize:14,fontWeight:600,fontFamily:f,cursor:loading||!input.trim()?"default":"pointer"}}>Pošljite</button>
     </div>
   </div>);
 }
@@ -945,16 +947,16 @@ function CompanyProfile({maticna,grantItems=[],onGoToGrants}){
     <div style={card}>
       {sh(TrendingUp,"Priporočeni razpisi")}
       {(()=>{const matched=grantItems.filter(g=>g.matchScore>=60);return(<>
-        <div style={{fontSize:13,color:c.t2,marginBottom:matched.length?4:0}}>{matched.length>0?`${matched.length} razpisov z ujemanjem nad 60 %.`:"Ni razpisov z ujemanjem nad 60 %."}</div>
+        <div style={{fontSize:13,color:c.t2,marginBottom:matched.length?4:0}}>{matched.length>0?`${matched.length} ${pl(matched.length,"razpis","razpisa","razpisi","razpisov")} z ujemanjem nad 60 %.`:"Ni razpisov z ujemanjem nad 60 %."}</div>
         {matched.slice(0,3).map(g=><div key={g.id} style={{display:"grid",gridTemplateColumns:"48px minmax(0,1fr)",alignItems:"center",gap:14,padding:"10px 0",borderBottom:`1px solid ${c.border}20`}}><Score value={g.matchScore}/><div style={{minWidth:0}}><div style={{display:"flex",alignItems:"center",gap:7,fontSize:13,fontWeight:600,color:c.t1,lineHeight:1.3}}><GrantIcon type={g.icon}/><span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{g.title}</span></div><div style={{fontSize:11,color:c.t2,...tnum}}>{g.amountLabel}</div></div></div>)}
-        {onGoToGrants&&<button onClick={onGoToGrants} style={{marginTop:14,display:"flex",alignItems:"center",gap:8,padding:"10px 18px",borderRadius:radius.md,border:"none",background:c.graphite,color:c.white,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:f}}>Prikaži vse razpise <ChevronRight size={14}/></button>}
+        {onGoToGrants&&<button onClick={onGoToGrants} style={{marginTop:14,display:"flex",alignItems:"center",gap:8,padding:"10px 18px",borderRadius:radius.md,border:"none",background:c.graphite,color:c.white,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:f}}>Prikažite vse razpise <ChevronRight size={14}/></button>}
       </>);})()}
     </div>
   </div>);
 }
 
 const fallbackGrants=[
-  {id:"fallback-1",title:"Digitalizacija poslovanja za MSP",funder:"Primer razpisa",status:"open",deadline:"brez roka",deadlineAt:null,amountLabel:"do 75.000 €",fundingType:"nepovratna sredstva",tags:["Digitalizacija","MSP"],icon:"digital",matchScore:72,topMatch:true,cofinancing:"do 60 %",region:"Slovenija",aiSummary:"Primer razpisa za prikaz v primeru, ko baza še ne vrne aktualnih razpisov.",officialText:null,hasAiSummary:false,sourceUrl:null,sourceName:"ni podatka",lastChecked:"ni preverjeno",qualityStatus:"needs_review",qualityLabel:"PREGLED",checklist:[{label:"Regija ustreza",p:true},{label:"KMU pogoj",p:true},{label:"De minimis prostor",p:true}]},
+  {id:"fallback-1",title:"Digitalizacija poslovanja za MSP",funder:"Primer razpisa",status:"open",deadline:"brez roka",deadlineAt:null,amountLabel:"do 75.000 €",fundingType:"nepovratna sredstva",tags:["Digitalizacija","MSP"],icon:"digital",matchScore:72,topMatch:true,cofinancing:"do 60 %",region:"Slovenija",aiSummary:"Primer razpisa, ki se prikaže, dokler baza ne vrne aktualnih razpisov.",officialText:null,hasAiSummary:false,sourceUrl:null,sourceName:"ni podatka",lastChecked:"ni preverjeno",qualityStatus:"needs_review",qualityLabel:"PREGLED",checklist:[{label:"Regija ustreza",p:true},{label:"KMU pogoj",p:true},{label:"De minimis prostor",p:true}]},
 ];
 
 function formatGrantDate(value){
@@ -1184,7 +1186,7 @@ function AdminView({isMobile}){
   return(<div style={{flex:1,minWidth:0,overflowY:isMobile?"visible":"auto",padding:isMobile?"18px 16px 28px":"28px 28px 40px"}}>
     <div style={{marginBottom:28}}>
       <h1 style={{fontSize:22,fontWeight:700,marginBottom:4}}>Admin: kakovost podatkov</h1>
-      <div style={{fontSize:13,color:c.t3}}>Interna stran, ni v navigaciji — dostopna samo prek ?admin=1.</div>
+      <div style={{fontSize:13,color:c.t3}}>Interna stran, ki ni v navigaciji. Dostopna je samo prek ?admin=1.</div>
     </div>
     {loading?<div style={{fontSize:13,color:c.t3}}>Nalagam …</div>:<>
       <div style={{marginBottom:28}}>
@@ -1317,7 +1319,7 @@ function Dashboard({maticna,profile}){
   return(<div style={{display:"flex",flexDirection:isMobile?"column":"row",minHeight:"100vh",height:isMobile?"auto":"100vh",width:"100%",fontFamily:f,background:c.ivory,color:c.t1,overflow:isMobile?"visible":"hidden"}}>
     <aside style={{width:isMobile?"100%":"clamp(200px,17vw,250px)",minWidth:isMobile?0:200,flexShrink:0,background:c.graphite,display:"flex",flexDirection:"column",padding:isMobile?"14px 12px":"28px 14px 20px",justifyContent:"space-between",position:isMobile?"sticky":"relative",top:0,zIndex:41}}><div><div style={{display:"flex",alignItems:"center",gap:12,paddingLeft:isMobile?4:10,marginBottom:isMobile?12:8}}><img src={logoIcon} alt="AI Razpisi" style={{width:38,height:38,borderRadius:radius.sm,flexShrink:0}}/><div><div style={{color:c.white,fontWeight:700,fontSize:16}}>RAZPISI</div><div style={{color:`${c.white}80`,fontSize:11}}>Pametno do sredstev</div></div></div><div style={{position:"relative"}}><nav style={{marginTop:isMobile?0:32,display:"flex",flexDirection:isMobile?"row":"column",gap:isMobile?4:1,overflowX:isMobile?"auto":"visible",paddingBottom:isMobile?2:0}}>{nav.map(n=>{const a=navSel===n.label;return(<div key={n.label} onClick={()=>{if(!n.soon)setNavSel(n.label);}} style={{display:"flex",alignItems:"center",gap:isMobile?8:11,padding:isMobile?"9px 10px":"10px 10px",borderLeft:isMobile?"none":`2px solid ${a?c.olive:"transparent"}`,borderBottom:isMobile?`2px solid ${a?c.olive:"transparent"}`:"none",cursor:n.soon?"default":"pointer",background:"transparent",flexShrink:0,opacity:n.soon?.55:1}}><n.icon size={17} strokeWidth={1.75} color={a?c.white:`${c.white}45`}/><span style={{fontSize:14,fontWeight:a?600:450,color:a?c.white:`${c.white}60`,flex:1,whiteSpace:"nowrap"}}>{isMobile&&n.label.length>12?n.label.split(" ")[0]:n.label}</span>{n.soon&&<span style={{color:`${c.white}70`,fontSize:9,fontWeight:700,letterSpacing:".05em"}}>KMALU</span>}{!n.soon&&n.badge&&<span style={{border:`1px solid ${a?c.white:c.olive}66`,color:a?c.white:c.olive,fontSize:11,fontWeight:700,borderRadius:radius.xs,padding:"1px 7px",...tnum}}>{n.badge}</span>}</div>);})}</nav>{isMobile&&<div style={{position:"absolute",top:0,right:0,bottom:2,width:26,background:`linear-gradient(90deg, transparent, ${c.graphite})`,pointerEvents:"none",display:"flex",alignItems:"center",justifyContent:"flex-end"}}><ChevronRight size={14} color={`${c.white}70`}/></div>}</div></div>{!isMobile&&<div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 10px"}}><div style={{width:34,height:34,borderRadius:radius.sm,background:c.olive,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:c.white,flexShrink:0}}>{(company?.company_name||"P").charAt(0)}</div><div style={{flex:1,minWidth:0}}><div style={{color:c.white,fontSize:13,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{company?.company_name||"Profil podjetja"}</div><div style={{color:`${c.white}55`,fontSize:11}}>Moj profil</div></div></div>}</aside>
     <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",overflow:isMobile?"visible":"hidden"}}>
-      <header style={{display:"flex",alignItems:"center",gap:12,padding:isMobile?"12px 16px":"16px 28px",background:c.white,borderBottom:`1px solid ${c.border}`}}><div style={{flexGrow:isMobile?1:0,flexShrink:1,flexBasis:isMobile?"auto":"min(58%,780px)",display:"flex",alignItems:"center",gap:10,background:c.ivory,border:`1px solid ${c.border}`,borderRadius:radius.md,padding:"12px 16px",height:48,minWidth:0}}><Search size={18} color={c.t3}/><input value={searchQuery} onChange={e=>{const v=e.target.value;setSearchQuery(v);if(v.trim()&&["Moj profil","Koledar rokov","Opozorila","AI pomočnik","Admin"].includes(navSel))setNavSel("Razpisi");}} placeholder="Išči po razpisih …" style={{border:"none",background:"transparent",outline:"none",fontSize:14,color:c.t1,fontFamily:f,flex:1,minWidth:0}}/>{searchQuery&&<button onClick={()=>setSearchQuery("")} style={{background:"none",border:"none",cursor:"pointer",padding:2,flexShrink:0,display:"flex"}}><X size={16} color={c.t3}/></button>}</div>{!isMobile&&<div style={{flex:1}}/>}<div onClick={()=>setNavSel("Opozorila")} style={{position:"relative",cursor:"pointer",flexShrink:0}}><Bell size={20} color={c.t2}/>{alertsCount>0&&<span style={{position:"absolute",top:-4,right:-4,width:16,height:16,borderRadius:"50%",background:c.coral,color:c.white,fontSize:9,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>{alertsCount>9?"9+":alertsCount}</span>}</div></header>
+      <header style={{display:"flex",alignItems:"center",gap:12,padding:isMobile?"12px 16px":"16px 28px",background:c.white,borderBottom:`1px solid ${c.border}`}}><div style={{flexGrow:isMobile?1:0,flexShrink:1,flexBasis:isMobile?"auto":"min(58%,780px)",display:"flex",alignItems:"center",gap:10,background:c.ivory,border:`1px solid ${c.border}`,borderRadius:radius.md,padding:"12px 16px",height:48,minWidth:0}}><Search size={18} color={c.t3}/><input value={searchQuery} onChange={e=>{const v=e.target.value;setSearchQuery(v);if(v.trim()&&["Moj profil","Koledar rokov","Opozorila","AI pomočnik","Admin"].includes(navSel))setNavSel("Razpisi");}} placeholder="Iščite po razpisih …" style={{border:"none",background:"transparent",outline:"none",fontSize:14,color:c.t1,fontFamily:f,flex:1,minWidth:0}}/>{searchQuery&&<button onClick={()=>setSearchQuery("")} style={{background:"none",border:"none",cursor:"pointer",padding:2,flexShrink:0,display:"flex"}}><X size={16} color={c.t3}/></button>}</div>{!isMobile&&<div style={{flex:1}}/>}<div onClick={()=>setNavSel("Opozorila")} style={{position:"relative",cursor:"pointer",flexShrink:0}}><Bell size={20} color={c.t2}/>{alertsCount>0&&<span style={{position:"absolute",top:-4,right:-4,width:16,height:16,borderRadius:"50%",background:c.coral,color:c.white,fontSize:9,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>{alertsCount>9?"9+":alertsCount}</span>}</div></header>
       <div style={{flex:1,minWidth:0,display:"flex",flexDirection:isMobile?"column":"row",overflow:isMobile?"visible":"hidden"}}>
         {navSel==="Moj profil"&&<div style={{flex:1,overflowY:isMobile?"visible":"auto"}}><CompanyProfile maticna={maticna} grantItems={grantItems} onGoToGrants={()=>setNavSel("Pregled")}/></div>}
         {navSel==="Koledar rokov"&&<DeadlineCalendar grantItems={grantItems} onSelect={g=>{setSel(g);setShowD(true);}}/>}

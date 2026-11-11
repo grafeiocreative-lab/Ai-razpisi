@@ -177,6 +177,12 @@ function scoreGrant(row: GrantRow, profile: Record<string, unknown>): { score: n
   const reasons: string[] = [];
   const penalties: string[] = [];
 
+  const interestLabels: Record<string, string> = {
+    digi: "digitalizacija", green: "zeleni prehod", export: "izvoz", rd: "R&D in inovacije",
+    employ: "zaposlovanje", energy: "energetika", tourism: "turizem", edu: "izobraževanje",
+    agri: "kmetijstvo", culture: "kultura",
+  };
+
   const kws: Record<string, string[]> = {
     digi:    ["digitalizacij", "digital", "informatiz", "e-poslovan", "it rešit"],
     green:   ["zeleni", "okolj", "trajnost", "podnebj", "ekolo", "obnovljiv", "co2", "emisij", "energetsk"],
@@ -193,13 +199,13 @@ function scoreGrant(row: GrantRow, profile: Record<string, unknown>): { score: n
   for (const [id, ks] of Object.entries(kws)) {
     if (p.interests?.includes(id) && ks.some(k => hay.includes(k))) {
       s += 15;
-      reasons.push(`Interes "${id}" se ujema z vsebino razpisa`);
+      reasons.push(`Interes „${interestLabels[id] ?? id}“ se ujema z vsebino razpisa`);
     }
   }
 
   if (activityMatches(hay, p.skdLabel)) {
     s += 18;
-    reasons.push(`Dejavnost "${p.skdLabel}" se ujema z vsebino razpisa`);
+    reasons.push(`Dejavnost „${p.skdLabel}“ se ujema z vsebino razpisa`);
   }
 
   // Velikost podjetja
