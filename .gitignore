@@ -28,3 +28,7 @@ supabase/.temp/
 *.docx
 *.xlsx
 *.pdf
+
+# Interni zapiski in lokalna konfiguracija Claude Code
+podatkovni-pregled-saas.md
+.claude/
