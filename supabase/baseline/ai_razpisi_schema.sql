@@ -5,14 +5,12 @@
 -- Zakaj to ni v supabase/migrations/: tamkajšnje datoteke so zgodovina STAREGA projekta
 -- (shema `public`, projekt fhoayfzwfsalnnpxxlak) in z živo bazo niso skladne. Glej supabase/README.md.
 --
--- Vrstni red: shema, sekvenca, tabele, ključi in unikatnosti, tuji ključi, indeksi,
--- RLS, pravilniki, pravice, pogled, sprožilec. Podatki za skd_lookup so v ai_razpisi_skd_lookup_seed.sql.
+-- Vrstni red: shema, tabele, ključi in unikatnosti, tuji ključi, indeksi,
+-- RLS, pravilniki, pravice. Podatki za skd_lookup so v ai_razpisi_skd_lookup_seed.sql.
 -- Po tej datoteki je treba v Supabase Dashboard (Settings → API → Exposed schemas) izpostaviti shemo ai_razpisi.
 
 create schema if not exists ai_razpisi;
 grant usage on schema ai_razpisi to anon, authenticated, service_role;
-
-create sequence if not exists ai_razpisi.scrape_log_id_seq;
 
 -- ── Tabele ────────────────────────────────────────────────────────────────
 
@@ -176,42 +174,6 @@ create table if not exists ai_razpisi.skd_lookup (
   updated_at timestamp with time zone not null default now()
 );
 
--- Zastareli tabeli iz starejšega prototipa. Aplikacija ju ne uporablja, v živi bazi sta prazni.
-create table if not exists ai_razpisi.razpisi (
-  id uuid not null default gen_random_uuid(),
-  source_url text not null,
-  source text not null,
-  title text not null,
-  description text,
-  ai_summary text,
-  ai_tags text[],
-  funding_type text,
-  max_amount text,
-  cofinancing_rate text,
-  eligible_entities text[],
-  min_employees integer,
-  max_employees integer,
-  regions text[],
-  deadline timestamp with time zone,
-  deadline_text text,
-  status text default 'odprto'::text,
-  scraped_at timestamp with time zone default now(),
-  updated_at timestamp with time zone default now(),
-  published_at timestamp with time zone,
-  search_vector tsvector
-);
-
-create table if not exists ai_razpisi.scrape_log (
-  id integer not null default nextval('ai_razpisi.scrape_log_id_seq'::regclass),
-  source text not null,
-  scraped_at timestamp with time zone default now(),
-  items_found integer default 0,
-  items_new integer default 0,
-  error text,
-  duration_ms integer
-);
-alter sequence ai_razpisi.scrape_log_id_seq owned by ai_razpisi.scrape_log.id;
-
 -- ── Primarni in unikatni ključi ───────────────────────────────────────────
 
 alter table ai_razpisi.ai_usage add constraint ai_usage_pkey primary key (usage_date);
@@ -226,9 +188,6 @@ alter table ai_razpisi.grant_sources add constraint grant_sources_pkey primary k
 alter table ai_razpisi.grants add constraint grants_pkey primary key (id);
 alter table ai_razpisi.plan_interest add constraint plan_interest_pkey primary key (id);
 alter table ai_razpisi.prs_cache add constraint prs_cache_pkey primary key (id);
-alter table ai_razpisi.razpisi add constraint razpisi_pkey primary key (id);
-alter table ai_razpisi.razpisi add constraint razpisi_source_url_key unique (source_url);
-alter table ai_razpisi.scrape_log add constraint scrape_log_pkey primary key (id);
 alter table ai_razpisi.skd_lookup add constraint skd_lookup_pkey primary key (code);
 alter table ai_razpisi.skd_lookup add constraint skd_lookup_normalized_code_key unique (normalized_code);
 
@@ -247,11 +206,6 @@ create index grant_matches_company_idx on ai_razpisi.grant_matches using btree (
 create index grant_matches_score_idx on ai_razpisi.grant_matches using btree (company_id, match_score desc);
 create unique index grant_matches_company_grant_uidx on ai_razpisi.grant_matches using btree (company_id, grant_id);
 create unique index prs_cache_registration_number_uidx on ai_razpisi.prs_cache using btree (registration_number);
-create index idx_razpisi_deadline on ai_razpisi.razpisi using btree (deadline);
-create index idx_razpisi_search on ai_razpisi.razpisi using gin (search_vector);
-create index idx_razpisi_source on ai_razpisi.razpisi using btree (source);
-create index idx_razpisi_status on ai_razpisi.razpisi using btree (status);
-create index idx_razpisi_tags on ai_razpisi.razpisi using gin (ai_tags);
 create index skd_lookup_level_idx on ai_razpisi.skd_lookup using btree (level);
 create index skd_lookup_parent_idx on ai_razpisi.skd_lookup using btree (parent_code);
 create index skd_lookup_section_idx on ai_razpisi.skd_lookup using btree (section_code);
@@ -270,8 +224,6 @@ alter table ai_razpisi.grant_sources enable row level security;
 alter table ai_razpisi.grants enable row level security;
 alter table ai_razpisi.plan_interest enable row level security;
 alter table ai_razpisi.prs_cache enable row level security;
-alter table ai_razpisi.razpisi enable row level security;
-alter table ai_razpisi.scrape_log enable row level security;
 alter table ai_razpisi.skd_lookup enable row level security;
 
 create policy companies_public_read on ai_razpisi.companies as permissive for select to anon, authenticated using (true);
@@ -281,12 +233,6 @@ create policy grant_matches_public_read on ai_razpisi.grant_matches as permissiv
 create policy grants_public_read on ai_razpisi.grants as permissive for select to anon, authenticated using (true);
 create policy "anon lahko zabelezi interes" on ai_razpisi.plan_interest as permissive for insert to anon with check (true);
 create policy skd_lookup_public_read on ai_razpisi.skd_lookup as permissive for select to public using (true);
--- Zastareli tabeli razpisi in scrape_log (odprta za pisanje, glej opombo zgoraj):
-create policy "Razpisi insert service" on ai_razpisi.razpisi as permissive for insert to public with check (true);
-create policy "Razpisi javno berljivi" on ai_razpisi.razpisi as permissive for select to public using (true);
-create policy "Razpisi update service" on ai_razpisi.razpisi as permissive for update to public using (true);
-create policy "Logi berljivi" on ai_razpisi.scrape_log as permissive for select to public using (true);
-create policy "Logi insert" on ai_razpisi.scrape_log as permissive for insert to public with check (true);
 
 -- ── Pravice (RLS sam ne zadostuje: service_role potrebuje izrecen GRANT) ──
 
@@ -310,34 +256,3 @@ grant delete, insert, select, update on ai_razpisi.prs_cache to service_role;
 grant select on ai_razpisi.prs_cache to anon, authenticated;
 grant delete, insert, select, update on ai_razpisi.skd_lookup to service_role;
 grant select on ai_razpisi.skd_lookup to anon, authenticated;
--- Zastareli tabeli: v živi bazi imata anon, authenticated in service_role VSE pravice (tudi truncate).
-grant delete, insert, references, select, trigger, truncate, update on ai_razpisi.razpisi to anon, authenticated, service_role;
-grant delete, insert, references, select, trigger, truncate, update on ai_razpisi.scrape_log to anon, authenticated, service_role;
-
--- ── Pogled in sprožilec (zastareli tabeli razpisi) ────────────────────────
-
-create view ai_razpisi.razpisi_aktivni as
- select id, title, source, source_url, ai_summary, ai_tags, funding_type, max_amount,
-        cofinancing_rate, eligible_entities, min_employees, deadline, deadline_text,
-        status, published_at, updated_at
-   from ai_razpisi.razpisi
-  where status = any (array['odprto'::text, 'v-pripravi'::text])
-  order by deadline;
-
--- Funkcija je v živi bazi v shemi public (ne v ai_razpisi) in nima nastavljenega search_path.
-create or replace function public.razpisi_search_update()
- returns trigger
- language plpgsql
-as $function$
-begin
-  new.search_vector :=
-    setweight(to_tsvector('simple', coalesce(new.title, '')), 'A') ||
-    setweight(to_tsvector('simple', coalesce(new.description, '')), 'B') ||
-    setweight(to_tsvector('simple', coalesce(new.ai_summary, '')), 'C');
-  new.updated_at := now();
-  return new;
-end;
-$function$;
-
-create trigger razpisi_search_trigger before insert or update on ai_razpisi.razpisi
-  for each row execute function public.razpisi_search_update();
