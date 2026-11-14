@@ -6,7 +6,7 @@ import {
   Zap,Shield,Loader2,ArrowRight,Cpu,Leaf,FlaskConical,Users,
   Building,GraduationCap,ChevronLeft,Pencil,Timer,Eye,Lock,
   Layers,MessageSquare,BellRing,Database,FileSearch,ArrowUpRight,
-  Minus,CircleCheck,CircleX,ChevronUp,Menu,
+  Minus,CircleCheck,CircleX,ChevronUp,Menu,Archive,
 } from "lucide-react";
 import{createClient}from"@supabase/supabase-js";
 import logoIcon from"./assets/logo-icon.png";
@@ -854,6 +854,45 @@ function AlertsView({grantItems=[],onSelect}){
   </div>);
 }
 
+/* ═══ ARHIV ZAPRTIH RAZPISOV ═══════════════════════ */
+// Samo seznam: zaprti razpisi iz iste tabele, brez statistike (zgodovine je še premalo za smiselna povprečja).
+function ArchiveView({isMobile}){
+  const[loading,setLoading]=useState(true);
+  const[items,setItems]=useState([]);
+  const[q,setQ]=useState("");
+  const[provider,setProvider]=useState("Vsi");
+  useEffect(()=>{let active=true;(async()=>{
+    const{data}=await sb.from("grants").select("id,title,provider,source_url,deadline_at").eq("status","closed").order("deadline_at",{ascending:false,nullsFirst:false}).limit(500);
+    if(active){setItems(data||[]);setLoading(false);}
+  })();return()=>{active=false;};},[]);
+  const providers=["Vsi",...Array.from(new Set(items.map(g=>g.provider).filter(Boolean))).sort((a,b)=>a.localeCompare(b,"sl"))];
+  const term=q.trim().toLowerCase();
+  const shown=items.filter(g=>(provider==="Vsi"||g.provider===provider)&&(!term||(g.title||"").toLowerCase().includes(term)||(g.provider||"").toLowerCase().includes(term)));
+  const fmt=d=>d?new Date(d).toLocaleDateString("sl-SI",{day:"numeric",month:"numeric",year:"numeric"}):"brez roka";
+  return(<div style={{flex:1,minWidth:0,overflowY:isMobile?"visible":"auto",padding:isMobile?"18px 16px 28px":"28px 28px 40px"}}>
+    <div style={{marginBottom:20}}>
+      <h2 style={{fontSize:22,fontWeight:700,color:c.t1,marginBottom:4}}>Arhiv</h2>
+      <p style={{fontSize:13,color:c.t2}}>{loading?"Nalagam …":`${shown.length} ${pl(shown.length,"zaprt razpis","zaprta razpisa","zaprti razpisi","zaprtih razpisov")}. Mnogi se vsako leto ponovijo, zato so v pomoč pri načrtovanju.`}</p>
+    </div>
+    <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:16}}>
+      <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Iščite po arhivu …" aria-label="Iskanje po arhivu" style={{flex:"1 1 220px",minWidth:0,padding:"10px 12px",border:`1px solid ${c.border}`,borderRadius:radius.sm,background:c.white,fontSize:14,fontFamily:f,color:c.t1,outline:"none"}}/>
+      <select value={provider} onChange={e=>setProvider(e.target.value)} aria-label="Filter po ponudniku" style={{flex:"0 1 280px",minWidth:0,padding:"10px 12px",border:`1px solid ${c.border}`,borderRadius:radius.sm,background:c.white,fontSize:14,fontFamily:f,color:c.t1}}>
+        {providers.map(p=><option key={p} value={p}>{p==="Vsi"?"Vsi ponudniki":p}</option>)}
+      </select>
+    </div>
+    {!loading&&shown.length===0?<div style={{padding:"20px 18px",borderRadius:radius.md,background:c.white,border:`1px solid ${c.border}`,color:c.t2,fontSize:13}}>{items.length===0?"V arhivu še ni zaprtih razpisov.":"Noben zaprt razpis ne ustreza iskanju."}</div>:
+    <div style={{borderTop:`1px solid ${c.border}`}}>{shown.map(g=>(
+      <a key={g.id} href={g.source_url} target="_blank" rel="noopener noreferrer" style={{display:"flex",alignItems:"center",gap:14,padding:"13px 2px",borderBottom:`1px solid ${c.border}`,textDecoration:"none",color:"inherit"}}>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:14,fontWeight:600,color:c.t1,marginBottom:2,overflow:isMobile?"visible":"hidden",textOverflow:"ellipsis",whiteSpace:isMobile?"normal":"nowrap"}}>{g.title}</div>
+          <div style={{fontSize:12,color:c.t2}}>{g.provider||"Ponudnik ni naveden"}</div>
+        </div>
+        <span style={{fontSize:11,fontWeight:700,color:c.t2,background:c.cream,padding:"4px 10px",borderRadius:radius.xs,flexShrink:0,whiteSpace:"nowrap",...tnum}}>{g.deadline_at?`ZAPRT ${fmt(g.deadline_at)}`:"ZAPRT"}</span>
+        <ExternalLink size={15} color={c.t3} aria-hidden="true"/>
+      </a>))}</div>}
+  </div>);
+}
+
 /* ═══ AI POMOČNIK ══════════════════════════════════ */
 // Samo pogovor (Q&A) o razpisih/profilu — brez tool use, ne spreminja ničesar v bazi.
 function AiAssistantChat({companyId}){
@@ -1313,7 +1352,7 @@ function Dashboard({maticna,profile}){
   const alertsCount=computeAlerts(grantItems).total;
   // Pri prehodu na Opozorila in Koledar rokov detajlni panel skrijemo (odpre se šele, ko uporabnik izbere razpis), drugje je privzeto viden.
   const goNav=label=>{setNavSel(label);setShowD(label!=="Opozorila"&&label!=="Koledar rokov");};
-  const nav=[{icon:LayoutGrid,label:"Pregled"},{icon:FileText,label:"Razpisi"},{icon:Layers,label:"Priložnosti zame",badge:matchedCount||undefined},{icon:User,label:"Moj profil"},{icon:Bell,label:"Opozorila",badge:alertsCount||undefined},{icon:Calendar,label:"Koledar rokov"},{icon:Bot,label:"AI pomočnik"}];
+  const nav=[{icon:LayoutGrid,label:"Pregled"},{icon:FileText,label:"Razpisi"},{icon:Layers,label:"Priložnosti zame",badge:matchedCount||undefined},{icon:User,label:"Moj profil"},{icon:Bell,label:"Opozorila",badge:alertsCount||undefined},{icon:Calendar,label:"Koledar rokov"},{icon:Archive,label:"Arhiv"},{icon:Bot,label:"AI pomočnik"}];
 
   // Kompakten pregled: samo obstoječi, že izračunani podatki — nič se ne izmišljuje.
   // Če katerega podatka (še) ni na voljo, metrika izpade namesto lažnega "0".
@@ -1341,14 +1380,15 @@ function Dashboard({maticna,profile}){
     {isMobile&&menuOpen&&<div onClick={()=>setMenuOpen(false)} style={{position:"fixed",inset:0,background:"rgba(20,24,18,.5)",zIndex:40}}/>}
     <aside style={{width:isMobile?"100%":"clamp(200px,17vw,250px)",minWidth:isMobile?0:200,flexShrink:0,background:c.graphite,display:"flex",flexDirection:"column",padding:isMobile?"14px 12px":"28px 14px 20px",justifyContent:"space-between",position:isMobile?"sticky":"relative",top:0,zIndex:41}}><div><div style={{display:"flex",alignItems:"center",gap:12,paddingLeft:isMobile?4:10,marginBottom:isMobile?0:8}}><img src={logoIcon} alt="AI Razpisi" style={{width:38,height:38,borderRadius:radius.sm,flexShrink:0}}/><div style={{flex:1,minWidth:0}}><div style={{color:c.white,fontWeight:700,fontSize:16}}>RAZPISI</div><div style={{color:`${c.white}80`,fontSize:11}}>Pametno do sredstev</div></div>{isMobile&&<button onClick={()=>setMenuOpen(o=>!o)} aria-label={menuOpen?"Zapri meni":"Odpri meni"} aria-expanded={menuOpen} style={{width:44,height:44,borderRadius:radius.sm,background:menuOpen?`${c.white}14`:"transparent",border:`1px solid ${c.white}26`,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginRight:2}}>{menuOpen?<X size={20} color={c.white}/>:<Menu size={20} color={c.white}/>}</button>}</div><div style={{position:"relative"}}><nav aria-label="Glavni meni" style={isMobile?{display:menuOpen?"flex":"none",flexDirection:"column",gap:0,position:"absolute",top:14,left:-12,right:-12,background:c.graphite,padding:"6px 12px 14px",borderTop:`1px solid ${c.white}1f`,boxShadow:"0 18px 32px rgba(0,0,0,.35)",maxHeight:"calc(100svh - 76px)",overflowY:"auto"}:{marginTop:32,display:"flex",flexDirection:"column",gap:1}}>{nav.map(n=>{const a=navSel===n.label;return(<div key={n.label} onClick={()=>{if(!n.soon){goNav(n.label);setMenuOpen(false);}}} style={{display:"flex",alignItems:"center",gap:11,padding:isMobile?"14px 10px":"10px 10px",borderLeft:`2px solid ${a?c.olive:"transparent"}`,borderBottom:isMobile?`1px solid ${c.white}12`:"none",cursor:n.soon?"default":"pointer",background:"transparent",flexShrink:0,opacity:n.soon?.55:1}}><n.icon size={17} strokeWidth={1.75} color={a?c.white:`${c.white}45`}/><span style={{fontSize:14,fontWeight:a?600:450,color:a?c.white:`${c.white}60`,flex:1,whiteSpace:"nowrap"}}>{n.label}</span>{n.soon&&<span style={{color:`${c.white}70`,fontSize:9,fontWeight:700,letterSpacing:".05em"}}>KMALU</span>}{!n.soon&&n.badge&&<span style={{border:`1px solid ${a?c.white:c.olive}66`,color:a?c.white:c.olive,fontSize:11,fontWeight:700,borderRadius:radius.xs,padding:"1px 7px",...tnum}}>{n.badge}</span>}</div>);})}</nav></div></div>{!isMobile&&<div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 10px"}}><div style={{width:34,height:34,borderRadius:radius.sm,background:c.olive,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:c.white,flexShrink:0}}>{(company?.company_name||"P").charAt(0)}</div><div style={{flex:1,minWidth:0}}><div style={{color:c.white,fontSize:13,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{company?.company_name||"Profil podjetja"}</div><div style={{color:`${c.white}55`,fontSize:11}}>Moj profil</div></div></div>}</aside>
     <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",overflow:isMobile?"visible":"hidden"}}>
-      <header style={{display:"flex",alignItems:"center",gap:12,padding:isMobile?"12px 16px":"16px 28px",background:c.white,borderBottom:`1px solid ${c.border}`}}><div style={{flexGrow:isMobile?1:0,flexShrink:1,flexBasis:isMobile?"auto":"min(58%,780px)",display:"flex",alignItems:"center",gap:10,background:c.ivory,border:`1px solid ${c.border}`,borderRadius:radius.md,padding:"12px 16px",height:48,minWidth:0}}><Search size={18} color={c.t3}/><input value={searchQuery} onChange={e=>{const v=e.target.value;setSearchQuery(v);if(v.trim()&&["Moj profil","Koledar rokov","Opozorila","AI pomočnik","Admin"].includes(navSel))setNavSel("Razpisi");}} placeholder="Iščite po razpisih …" style={{border:"none",background:"transparent",outline:"none",fontSize:14,color:c.t1,fontFamily:f,flex:1,minWidth:0}}/>{searchQuery&&<button onClick={()=>setSearchQuery("")} style={{background:"none",border:"none",cursor:"pointer",padding:2,flexShrink:0,display:"flex"}}><X size={16} color={c.t3}/></button>}</div>{!isMobile&&<div style={{flex:1}}/>}<div onClick={()=>goNav("Opozorila")} style={{position:"relative",cursor:"pointer",flexShrink:0}}><Bell size={20} color={c.t2}/>{alertsCount>0&&<span style={{position:"absolute",top:-4,right:-4,width:16,height:16,borderRadius:"50%",background:c.coral,color:c.white,fontSize:9,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>{alertsCount>9?"9+":alertsCount}</span>}</div></header>
+      <header style={{display:"flex",alignItems:"center",gap:12,padding:isMobile?"12px 16px":"16px 28px",background:c.white,borderBottom:`1px solid ${c.border}`}}><div style={{flexGrow:isMobile?1:0,flexShrink:1,flexBasis:isMobile?"auto":"min(58%,780px)",display:"flex",alignItems:"center",gap:10,background:c.ivory,border:`1px solid ${c.border}`,borderRadius:radius.md,padding:"12px 16px",height:48,minWidth:0}}><Search size={18} color={c.t3}/><input value={searchQuery} onChange={e=>{const v=e.target.value;setSearchQuery(v);if(v.trim()&&["Moj profil","Koledar rokov","Opozorila","Arhiv","AI pomočnik","Admin"].includes(navSel))setNavSel("Razpisi");}} placeholder="Iščite po razpisih …" style={{border:"none",background:"transparent",outline:"none",fontSize:14,color:c.t1,fontFamily:f,flex:1,minWidth:0}}/>{searchQuery&&<button onClick={()=>setSearchQuery("")} style={{background:"none",border:"none",cursor:"pointer",padding:2,flexShrink:0,display:"flex"}}><X size={16} color={c.t3}/></button>}</div>{!isMobile&&<div style={{flex:1}}/>}<div onClick={()=>goNav("Opozorila")} style={{position:"relative",cursor:"pointer",flexShrink:0}}><Bell size={20} color={c.t2}/>{alertsCount>0&&<span style={{position:"absolute",top:-4,right:-4,width:16,height:16,borderRadius:"50%",background:c.coral,color:c.white,fontSize:9,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>{alertsCount>9?"9+":alertsCount}</span>}</div></header>
       <div style={{flex:1,minWidth:0,display:"flex",flexDirection:isMobile?"column":"row",overflow:isMobile?"visible":"hidden"}}>
         {navSel==="Moj profil"&&<div style={{flex:1,overflowY:isMobile?"visible":"auto"}}><CompanyProfile maticna={maticna} grantItems={grantItems} onGoToGrants={()=>setNavSel("Pregled")}/></div>}
         {navSel==="Koledar rokov"&&<DeadlineCalendar grantItems={grantItems} onSelect={g=>{setSel(g);setShowD(true);}}/>}
         {navSel==="Opozorila"&&<AlertsView grantItems={grantItems} onSelect={g=>{setSel(g);setShowD(true);}}/>}
         {navSel==="AI pomočnik"&&<AiAssistantChat companyId={company?.id}/>}
+        {navSel==="Arhiv"&&<ArchiveView isMobile={isMobile}/>}
         {navSel==="Admin"&&<AdminView isMobile={isMobile}/>}
-        {navSel!=="Moj profil"&&navSel!=="Koledar rokov"&&navSel!=="Opozorila"&&navSel!=="AI pomočnik"&&navSel!=="Admin"&&<div style={{flex:1,minWidth:0,overflowY:isMobile?"visible":"auto",padding:isMobile?"18px 16px 28px":"28px 28px 40px"}}>
+        {navSel!=="Moj profil"&&navSel!=="Koledar rokov"&&navSel!=="Opozorila"&&navSel!=="AI pomočnik"&&navSel!=="Arhiv"&&navSel!=="Admin"&&<div style={{flex:1,minWidth:0,overflowY:isMobile?"visible":"auto",padding:isMobile?"18px 16px 28px":"28px 28px 40px"}}>
           <div style={{marginBottom:28}}>
             <div style={{fontSize:11,fontWeight:700,letterSpacing:".05em",color:c.t3,marginBottom:14}}>PREGLED</div>
             <div style={{display:isMobile?"grid":"flex",gridTemplateColumns:isMobile?"1fr 1fr":undefined,rowGap:isMobile?18:0}}>
@@ -1397,7 +1437,7 @@ function Dashboard({maticna,profile}){
           );})}</div>
           )}
         </div>}
-        {navSel!=="Moj profil"&&navSel!=="AI pomočnik"&&navSel!=="Admin"&&showD&&sel&&(()=>{
+        {navSel!=="Moj profil"&&navSel!=="AI pomočnik"&&navSel!=="Arhiv"&&navSel!=="Admin"&&showD&&sel&&(()=>{
           // Uradni vir → AI razlaga: prikažemo dvoje ločeno samo, kadar imamo resnično oboje
           // (surov/uraden tekst IN ločen AI povzetek) — sicer en sam, obstoječi povzetek.
           const officialRaw=(sel.officialText||"").trim();
