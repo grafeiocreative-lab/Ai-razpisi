@@ -144,34 +144,33 @@ Deno.serve(async (req) => {
       }
       let viesCompany: { name: string; address: string } | null = null;
       if (resolvedMaticna === maticna) {
-        // Zadnji poskus: VIES EU DDV validacija vrne firmo → iščemo v prs_cache po imenu
-        try {
-          const viesResp = await fetch(
-            `https://ec.europa.eu/taxation_customs/vies/rest-api/ms/SI/vat/${maticna}`
-          );
-          if (viesResp.ok) {
-            const vies = await viesResp.json();
-            if (vies.isValid && vies.name) {
-              viesCompany = { name: vies.name, address: vies.address || "" };
-              // Vzami besedi pred prvim vejico kot iskalni niz
-              const searchName = vies.name.split(",")[0].trim();
-              const { data: byName } = await supabase
-                .from("prs_cache")
-                .select("registration_number")
-                .ilike("company_name", `${searchName}%`)
-                .limit(1)
-                .maybeSingle();
-              if (byName?.registration_number) {
-                resolvedMaticna = byName.registration_number;
-                // Zakešaj davčno za prihodnje iskanje
-                await supabase
-                  .from("prs_cache")
-                  .update({ tax_number: maticna })
-                  .eq("registration_number", resolvedMaticna);
-              }
-            }
+        // Zadnji poskus: VIES vrne ime in naslov, po njiju poiščemo podjetje v prs_cache.
+        viesCompany = await fetchVies(maticna);
+        if (viesCompany) {
+          const matched = await findPrsByVies(supabase, viesCompany);
+          if (matched) {
+            resolvedMaticna = matched;
+            // Zakešaj davčno za prihodnje iskanje
+            await supabase
+              .from("prs_cache")
+              .update({ tax_number: maticna })
+              .eq("registration_number", resolvedMaticna);
           }
-        } catch { /* VIES ni dosegljiv, preskočimo */ }
+        }
+      }
+
+      if (resolvedMaticna === maticna && viesCompany) {
+        // Davčna je veljavna, matične pa ne poznamo: portal JODP išče po matični številki, zato
+        // de minimis pomoči ne moremo preveriti. To jasno sporočimo (brez lažnega "ni pomoči").
+        return json({
+          ok: true,
+          no_maticna: true,
+          company_in_jodp: true,
+          maticna,
+          vies_company: viesCompany,
+          records_found: 0,
+          records: [],
+        }, 200);
       }
 
       if (resolvedMaticna === maticna) {
@@ -356,3 +355,76 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: String(err) }, 500);
   }
 });
+
+// ── VIES → PRS ujemanje ───────────────────────────────────────────────
+// VIES vrne ime in naslov. Pri s.p. je to ime osebe ("MIRAN VUGRINSKI"), v PRS pa je firma pred
+// imenom ("Dostava hrane, Alija Gavranović s.p."), hišna številka pa ima ničle ("Regentova ulica 020").
+// Zato ne iščemo po začetku imena, ampak po naslovu in po vseh besedah imena.
+const NAME_SUFFIXES = new Set(["d.o.o.", "d.o.o", "s.p.", "s.p", "d.d.", "d.n.o.", "k.d.", "z.o.o.", "sp", "doo"]);
+
+function foldText(value: string): string {
+  return value.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d");
+}
+
+function parseViesAddress(address: string): { street: string; number: string; postCode: string; city: string } | null {
+  const parts = address.split(/[,\n]/).map((p) => p.trim()).filter(Boolean);
+  const cityPart = parts.find((p) => /^\d{4}\s/.test(p));
+  const m = (parts[0] || "").match(/^(.+?)\s+(\d+)\s*[A-Za-z]?$/);
+  if (!cityPart || !m) return null;
+  return {
+    street: m[1].replace(/[%_]/g, " ").trim(),
+    number: m[2],
+    postCode: cityPart.slice(0, 4),
+    city: cityPart.slice(5).trim(),
+  };
+}
+
+// deno-lint-ignore no-explicit-any
+async function findPrsByVies(supabase: any, vies: { name: string; address: string }): Promise<string | null> {
+  const rawTokens = vies.name.split(",")[0].toLowerCase().split(/\s+/).filter((t) => t.length >= 2 && !NAME_SUFFIXES.has(t));
+  if (rawTokens.length === 0) return null;
+  const foldedTokens = rawTokens.map(foldText);
+  const hasAllTokens = (name: string) => {
+    const f = foldText(name);
+    return foldedTokens.every((t) => f.includes(t));
+  };
+  type Row = { registration_number: string; company_name: string; address: string | null };
+
+  const addr = parseViesAddress(vies.address || "");
+  if (addr) {
+    const { data } = await supabase
+      .from("prs_cache")
+      .select("registration_number, company_name, address")
+      .ilike("address", `${addr.street} ${addr.number.padStart(3, "0")}%`)
+      .ilike("address", `%${addr.postCode}%`)
+      .limit(300);
+    const hits = ((data || []) as Row[]).filter((c) => hasAllTokens(c.company_name));
+    if (hits.length === 1) return hits[0].registration_number;
+    if (hits.length > 1) return null; // dvoumno: raje brez ujemanja kot napačno podjetje
+  }
+
+  // Brez ujemanja po naslovu (npr. selitev): iščemo po besedah imena.
+  let query = supabase.from("prs_cache").select("registration_number, company_name, address");
+  for (const t of [...rawTokens].sort((a, b) => b.length - a.length).slice(0, 3)) {
+    query = query.ilike("company_name", `%${t.replace(/[%_]/g, " ")}%`);
+  }
+  const { data } = await query.limit(200);
+  const named = ((data || []) as Row[]).filter((c) => hasAllTokens(c.company_name));
+  const inCity = addr ? named.filter((c) => String(c.address || "").includes(addr.postCode)) : named;
+  if (inCity.length === 1) return inCity[0].registration_number;
+  if (inCity.length === 0 && named.length === 1) return named[0].registration_number;
+  return null;
+}
+
+async function fetchVies(taxNumber: string): Promise<{ name: string; address: string } | null> {
+  try {
+    const resp = await fetch(
+      `https://ec.europa.eu/taxation_customs/vies/rest-api/ms/SI/vat/${taxNumber}`,
+      { signal: AbortSignal.timeout(8000) },
+    );
+    if (!resp.ok) return null;
+    const vies = await resp.json();
+    if (vies.isValid && vies.name) return { name: String(vies.name), address: String(vies.address || "") };
+  } catch { /* VIES ni dosegljiv */ }
+  return null;
+}
