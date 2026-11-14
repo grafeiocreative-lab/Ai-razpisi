@@ -156,6 +156,12 @@ Deno.serve(async (req) => {
               continue;
             }
 
+            // Naslov očistimo HTML kod (npr. &quot;), objave brez denarja (imenovanja v organe,
+            // pripombe na predpise, vpisi v evidence strokovnjakov) pa označimo s statusom "notice".
+            // Vsi filtri na open/upcoming jih nato samodejno preskočijo (seznam, ujemanje, AI).
+            grant.title = decodeHtmlEntities(String(grant.title));
+            if (isNonGrantNotice(String(grant.title))) grant.status = "notice";
+
             const existing = await findExistingGrant(supabase, grant);
 
             if (existing?.id) {
@@ -1005,6 +1011,28 @@ function extractUrl(block: string, label: string): string | null {
 
   const urlMatch = field.match(/(https?:\/\/[^\s"<>]+)/);
   return urlMatch ? urlMatch[1] : null;
+}
+
+const NAMED_ENTITIES: Record<string, string> = {
+  quot: '"', amp: "&", lt: "<", gt: ">", apos: "'", nbsp: " ", euro: "€",
+  laquo: "«", raquo: "»", ndash: "–", mdash: "—", hellip: "…", lsquo: "‘", rsquo: "’", ldquo: "“", rdquo: "”",
+};
+
+function decodeHtmlEntities(value: string): string {
+  return value
+    .replace(/&#x([0-9a-f]+);/gi, (_m, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_m, d) => String.fromCodePoint(parseInt(d, 10)))
+    .replace(/&([a-z]+);/gi, (m, n) => NAMED_ENTITIES[n.toLowerCase()] ?? m)
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+// Objave, ki niso razpisi za podjetja (nimajo denarja ali niso namenjene podjetjem kot upravičencem).
+// Namenoma ozko: raje kakšna objava ostane med razpisi, kot da bi izginil pravi razpis.
+const NON_GRANT_TITLE = /(pripomb|upravn\w* odbor|nadzorn\w* svet|svet zavoda|predstavnik\w* ustanovitelj|recenzent|evidenc\w* (strokovnjakov|izvajalcev)|vpis\w* v (bazo|evidenco)|kandidir\w+ za (neodvisnega )?\w*\s*(start-up )?strokovnjak)/i;
+
+function isNonGrantNotice(title: string): boolean {
+  return NON_GRANT_TITLE.test(title);
 }
 
 function cleanHtmlText(value: string): string {
