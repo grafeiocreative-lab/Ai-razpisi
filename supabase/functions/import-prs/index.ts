@@ -9,6 +9,12 @@ const BATCH_SIZE = 100;
 
 Deno.serve(async (req) => {
   try {
+    // Uvoz prenese in prepiše celoten register, zato ga sme sprožiti samo lastnik (ista skrivnost kot scrape-grants).
+    const cronSecret = Deno.env.get("SCRAPE_GRANTS_SECRET");
+    if (cronSecret && req.headers.get("x-cron-secret") !== cronSecret) {
+      return json({ ok: false, error: "Unauthorized" }, 401);
+    }
+
     const body = req.method === "POST" ? await safeJson(req) : {};
 
     const offset = Math.max(0, Number(body.offset || 0));
@@ -222,8 +228,12 @@ function inferCohesionRegion(postCode: string | null, location: string | null) {
   const pc = String(postCode || "").trim();
   const loc = String(location || "").toLowerCase();
 
-  if (/^[23689]/.test(pc)) return "Vzhodna Slovenija";
-  if (/^[145]/.test(pc)) return "Zahodna Slovenija";
+  // Kohezijski regiji: Zahodna = osrednjeslovenska, gorenjska, goriška, obalno-kraška in primorsko-notranjska
+  // (poštne številke 1, 4, 5, 6), Vzhodna = ostalo (2, 3, 8, 9). Izjemi znotraj območja 1xxx:
+  // Zasavje (Zagorje, Trbovlje, Hrastnik, Radeče) in Ribniško-Kočevsko območje sta v vzhodni regiji.
+  if (/^1(41|42|43)\d$/.test(pc) || ["1310", "1317", "1318", "1330", "1331", "1332", "1336", "1337", "1338"].includes(pc)) return "Vzhodna Slovenija";
+  if (/^[2389]/.test(pc)) return "Vzhodna Slovenija";
+  if (/^[1456]/.test(pc)) return "Zahodna Slovenija";
 
   const eastHints = [
     "maribor", "celje", "ptuj", "murska sobota", "novo mesto", "krško",
