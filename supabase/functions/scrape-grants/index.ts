@@ -87,6 +87,16 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, serviceRoleKey, { db: { schema: "ai_razpisi" } });
 
+    // Način samo za AI povzetke: ne osvežuje razpisov, samo dopolni manjkajoče povzetke
+    // (npr. po izpadu ključa). Omejeno z dnevno kvoto žetonov in z `limit` (največ 60).
+    const reqBody = await req.json().catch(() => ({}));
+    if (reqBody?.only === "summaries") {
+      if (!anthropicKey) return json({ ok: false, error: "Missing ANTHROPIC_API_KEY" }, 500);
+      const limit = Math.min(Math.max(Number(reqBody.limit) || 30, 1), 60);
+      const { processed, errors } = await generateSummaries(supabase, anthropicKey, limit);
+      return json({ ok: true, ai_summaries: processed, errors });
+    }
+
     const results = {
       inserted: 0,
       updated: 0,
@@ -149,9 +159,17 @@ Deno.serve(async (req) => {
             const existing = await findExistingGrant(supabase, grant);
 
             if (existing?.id) {
+              // Parserji vedno vrnejo plain_language_summary: null. Če bi zapis prepisali celega, bi vsak
+              // dnevni tek izbrisal že ustvarjene AI povzetke. Povzetek zato ohranimo, razen če se je
+              // uradno besedilo razpisa spremenilo (tedaj ga ustvarimo znova).
+              const { plain_language_summary: _keepSummary, ...fields } = grant;
+              const updateFields: Record<string, unknown> = { ...fields };
+              if ((fields.raw_summary ?? null) !== (existing.raw_summary ?? null)) {
+                updateFields.plain_language_summary = null;
+              }
               const { error } = await supabase
                 .from("grants")
-                .update(grant)
+                .update(updateFields)
                 .eq("id", existing.id);
 
               if (error) {
@@ -189,9 +207,9 @@ Deno.serve(async (req) => {
     }
 
     // AI povzetki: po scrape-u in upsert-u poišči razpise brez plain_language_summary
-    // in jih dopolni s pomočjo Claude Sonnet 5 (max 10 na klic, rate limit varovalka).
+    // in jih dopolni s pomočjo Claude Sonnet 5 (največ 20 na klic, po 4 vzporedno).
     if (anthropicKey) {
-      const { processed, errors: summaryErrors } = await generateSummaries(supabase, anthropicKey);
+      const { processed, errors: summaryErrors } = await generateSummaries(supabase, anthropicKey, 20);
       results.ai_summaries = processed;
       results.errors.push(...summaryErrors);
     }
@@ -234,7 +252,7 @@ async function checkAiBudget(supabase: ReturnType<typeof createClient>): Promise
   return { ok: used < DAILY_TOKEN_BUDGET, used };
 }
 
-async function recordAiUsage(supabase: ReturnType<typeof createClient>, inputTokens: number, outputTokens: number) {
+async function recordAiUsage(supabase: ReturnType<typeof createClient>, inputTokens: number, outputTokens: number, requests = 1) {
   const today = new Date().toISOString().slice(0, 10);
   const { data, error: selectError } = await supabase.from("ai_usage").select("input_tokens, output_tokens, request_count").eq("usage_date", today).maybeSingle();
   if (selectError) console.error("ai_usage select napaka:", selectError.message);
@@ -242,7 +260,7 @@ async function recordAiUsage(supabase: ReturnType<typeof createClient>, inputTok
     usage_date: today,
     input_tokens: Number(data?.input_tokens || 0) + inputTokens,
     output_tokens: Number(data?.output_tokens || 0) + outputTokens,
-    request_count: Number(data?.request_count || 0) + 1,
+    request_count: Number(data?.request_count || 0) + requests,
     updated_at: new Date().toISOString(),
   }, { onConflict: "usage_date" });
   if (upsertError) console.error("ai_usage upsert napaka:", upsertError.message);
@@ -250,73 +268,87 @@ async function recordAiUsage(supabase: ReturnType<typeof createClient>, inputTok
 
 // ─── AI povzetki (Claude Sonnet 5) ────────────────────
 // Poišče razpise brez plain_language_summary in za vsakega pokliče Anthropic API.
-// Max 10 na klic funkcije, da ne obtičimo na rate limitu ali predolgem izvajanju.
+// Največ `limit` na klic, po `concurrency` vzporedno. Poraba žetonov se beleži enkrat na paket
+// (vzporedno branje in pisanje v ai_usage bi sicer izgubilo del štetja).
 async function generateSummaries(
   supabase: ReturnType<typeof createClient>,
-  apiKey: string
+  apiKey: string,
+  limit = 20,
+  concurrency = 4
 ): Promise<{ processed: number; errors: string[] }> {
   const errors: string[] = [];
   let processed = 0;
-
-  const budget = await checkAiBudget(supabase);
-  if (!budget.ok) {
-    errors.push("AI povzetki preskočeni: dnevna kvota žetonov je izčrpana");
-    return { processed, errors };
-  }
 
   const { data: grants, error } = await supabase
     .from("grants")
     .select("id, title, raw_summary, requirements, max_aid_amount, deadline_at")
     .or("plain_language_summary.is.null,plain_language_summary.eq.")
     .in("status", ["open", "upcoming"])
-    .limit(10);
+    .order("deadline_at", { ascending: true, nullsFirst: false })
+    .limit(limit);
 
   if (error) {
     errors.push(`AI povzetki, poizvedba: ${error.message}`);
     return { processed, errors };
   }
 
-  for (const grant of grants || []) {
-    try {
-      const summary = await summarizeGrant(supabase, apiKey, grant);
+  const list = grants || [];
+  for (let i = 0; i < list.length; i += concurrency) {
+    const budget = await checkAiBudget(supabase);
+    if (!budget.ok) {
+      errors.push("AI povzetki ustavljeni: dnevna kvota žetonov je izčrpana");
+      break;
+    }
+
+    const batch = list.slice(i, i + concurrency);
+    const settled = await Promise.allSettled(batch.map(async (grant) => {
+      const result = await summarizeGrant(apiKey, grant);
       const { error: updateError } = await supabase
         .from("grants")
-        .update({ plain_language_summary: summary })
+        .update({ plain_language_summary: result.text })
         .eq("id", grant.id);
+      if (updateError) throw new Error(`zapis: ${updateError.message}`);
+      return result;
+    }));
 
-      if (updateError) {
-        errors.push(`AI povzetek, zapis "${grant.title}": ${updateError.message}`);
-      } else {
+    let inTok = 0, outTok = 0, calls = 0;
+    settled.forEach((r, k) => {
+      if (r.status === "fulfilled") {
         processed++;
+        inTok += r.value.inputTokens;
+        outTok += r.value.outputTokens;
+        calls++;
+      } else {
+        errors.push(`AI povzetek "${batch[k].title}": ${String(r.reason)}`);
       }
-    } catch (err) {
-      errors.push(`AI povzetek "${grant.title}": ${String(err)}`);
-    }
+    });
+    if (calls > 0) await recordAiUsage(supabase, inTok, outTok, calls);
   }
 
   return { processed, errors };
 }
 
 async function summarizeGrant(
-  supabase: ReturnType<typeof createClient>,
   apiKey: string,
   grant: { title: string; raw_summary: string | null; requirements: string | null; max_aid_amount: number | null; deadline_at: string | null }
-): Promise<string> {
-  const systemPrompt = `Si pomočnik za razlago javnih razpisov v Sloveniji. Piši v slovenščini, naravno, brez uradniškega jezika. Uporabljaj slovenske tipografske konvencije: narekovaji „..." ne "...", nikoli ne uporabljaj pomišljaja (– ali —) sredi povedi, uporabi vejico, dvopičje ali piko, decimalna vejica ne pika. Piši kratko in jedrnato.`;
+): Promise<{ text: string; inputTokens: number; outputTokens: number }> {
+  const systemPrompt = `Si pomočnik za razlago javnih razpisov v Sloveniji. Piši v slovenščini, naravno, brez uradniškega jezika. Bralca vedno vikaj (nikoli ne tikaj). Uporabljaj slovenske tipografske konvencije: narekovaji „..." ne "...", nikoli ne uporabljaj pomišljaja (– ali —) sredi povedi, uporabi vejico, dvopičje ali piko, decimalna vejica ne pika. Piši kratko in jedrnato.`;
 
   const znaniZnesek = grant.max_aid_amount ? `${Math.round(grant.max_aid_amount).toLocaleString("sl-SI")} €` : "ni navedeno v opisu";
   const znaniRok = grant.deadline_at ? new Date(grant.deadline_at).toLocaleDateString("sl-SI") : "ni naveden v opisu";
   const opis = (grant.raw_summary || grant.requirements || "").substring(0, 4000) || "Podrobnega opisa ni na voljo, sklepaj naslov razpisa.";
 
   const userPrompt =
-    `Povzemi ta razpis v 3 stavkih za lastnika malega podjetja. Povej: komu je namenjen, koliko denarja je na voljo, kdaj je rok. Ne uporabljaj uradniškega jezika.\n\n` +
+    `Povzemi ta razpis v največ 3 kratkih stavkih (skupaj do 70 besed) za lastnika malega podjetja. Povej: komu je namenjen, koliko denarja je na voljo, kdaj je rok. Ne uporabljaj uradniškega jezika.\n\n` +
     `Naslov: ${grant.title}\n` +
     `Znesek iz podatkovne baze (uporabi, če opis ne pove drugače): ${znaniZnesek}\n` +
     `Rok iz podatkovne baze (uporabi, če opis ne pove drugače): ${znaniRok}\n` +
     `Opis: ${opis}`;
 
+  // Časovna omejitev: en počasen klic ne sme povleči cele funkcije čez limit izvajanja.
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
+    signal: AbortSignal.timeout(30_000),
     headers: {
       "x-api-key": apiKey,
       "anthropic-version": "2023-06-01",
@@ -324,7 +356,7 @@ async function summarizeGrant(
     },
     body: JSON.stringify({
       model: "claude-sonnet-5",
-      max_tokens: 400,
+      max_tokens: 500,
       system: systemPrompt,
       messages: [{ role: "user", content: userPrompt }],
     }),
@@ -337,10 +369,6 @@ async function summarizeGrant(
 
   const data = await res.json();
 
-  if (data.usage) {
-    await recordAiUsage(supabase, Number(data.usage.input_tokens || 0), Number(data.usage.output_tokens || 0));
-  }
-
   if (data.stop_reason === "refusal") {
     throw new Error("Anthropic API je zavrnil zahtevo (refusal)");
   }
@@ -350,7 +378,18 @@ async function summarizeGrant(
     throw new Error("Anthropic API ni vrnil besedila");
   }
 
-  return textBlock.text.trim();
+  // Če je odgovor obtičal na meji žetonov, ga odrežemo na zadnji celi stavek (ne sredi besede).
+  let text = textBlock.text.trim();
+  if (data.stop_reason === "max_tokens") {
+    const lastEnd = Math.max(text.lastIndexOf(". "), text.lastIndexOf("! "), text.lastIndexOf("? "));
+    text = lastEnd > 40 ? text.slice(0, lastEnd + 1) : text;
+  }
+
+  return {
+    text,
+    inputTokens: Number(data.usage?.input_tokens || 0),
+    outputTokens: Number(data.usage?.output_tokens || 0),
+  };
 }
 
 async function closeExpiredGrants(supabase: ReturnType<typeof createClient>): Promise<number> {
@@ -804,7 +843,7 @@ async function findExistingGrant(
   if (grant.source_url) {
     const { data } = await supabase
       .from("grants")
-      .select("id")
+      .select("id, raw_summary")
       .eq("source_url", grant.source_url)
       .maybeSingle();
 
@@ -813,7 +852,7 @@ async function findExistingGrant(
 
   const { data } = await supabase
     .from("grants")
-    .select("id")
+    .select("id, raw_summary")
     .eq("title", grant.title)
     .maybeSingle();
 
