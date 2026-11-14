@@ -1169,7 +1169,7 @@ function AdminView({isMobile}){
     if(active){setSourceHealth(health||[]);setGrants(g||[]);setAiUsage(usage||[]);setLoading(false);}
   })();return()=>{active=false;};},[]);
 
-  const sourceLabel=source=>({evropskasredstva:"Evropska sredstva",jodp:"JODP",sps:"SPS",aris:"ARIS",ess:"ESS",ajpes:"AJPES/PRS",spirit:"SPIRIT Slovenija",mgts:"MGTŠ",mkgp:"MKGP"}[source]||source);
+  const sourceLabel=source=>({evropskasredstva:"Evropska sredstva",jodp:"JODP",sps:"SPS",aris:"ARIS",ess:"ESS",ajpes:"AJPES/PRS",spirit:"SPIRIT Slovenija",mgts:"Min. za gospodarstvo, delo in šport",mkgp:"Min. za kmetijstvo",mzie:"Min. za infrastrukturo in energetiko",mop:"Min. za okolje in prostor"}[source]||source);
   // Ista izpeljava kot v mapGrant() — brez tega bi se admin pogled in uporabniški prikaz razšla.
   const quality=row=>row.raw_payload?.quality_status||(row.source_url&&row.deadline_at?"verified":"needs_review");
   const flags=row=>row.raw_payload?.quality_flags||[];
@@ -1258,7 +1258,7 @@ function AdminView({isMobile}){
 
 function SourceHealthPanel({items,isMobile}){
   if(!items.length)return null;
-  const label=source=>source==="evropskasredstva"?"Evropska sredstva":source==="jodp"?"JODP":source==="sps"?"SPS":source==="spirit"?"SPIRIT Slovenija":source==="mgts"?"MGTŠ":source==="mkgp"?"MKGP":source;
+  const label=source=>source==="evropskasredstva"?"Evropska sredstva":source==="jodp"?"JODP":source==="sps"?"SPS":source==="spirit"?"SPIRIT Slovenija":source==="mgts"?"Min. za gospodarstvo, delo in šport":source==="mkgp"?"Min. za kmetijstvo":source==="mzie"?"Min. za infrastrukturo in energetiko":source==="mop"?"Min. za okolje in prostor":source;
   return(<div style={{marginBottom:28}}>
     <div style={{fontSize:11,fontWeight:700,letterSpacing:".05em",color:c.t3,marginBottom:10}}>SISTEMSKI VIRI</div>
     <div style={{borderTop:`1px solid ${c.border}`}}>

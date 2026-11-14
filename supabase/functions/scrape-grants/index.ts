@@ -55,17 +55,40 @@ const PAGES = [
     // Vsa ministrstva delijo isto gov.si "javne objave" CMS predlogo (tabela + strani
     // z razdelki Namen/Predmet) — en parser (parseGovSiJavneObjave) pokrije oboje,
     // dodajanje novega ministrstva je samo nov vnos tu.
+    // Po preoblikovanju vlade (2026) je to Ministrstvo za gospodarstvo, delo in šport.
+    // Ključ vira ostaja "mgts", da se zgodovina zdravja vira ohrani.
     source: "mgts",
     parser: "govsi",
-    url: "https://www.gov.si/drzavni-organi/ministrstva/ministrstvo-za-gospodarstvo-turizem-in-sport/javne-objave/",
-    provider: "Ministrstvo za gospodarstvo, turizem in šport",
+    url: "https://www.gov.si/drzavni-organi/ministrstva/ministrstvo-za-gospodarstvo-delo-in-sport/javne-objave/",
+    expectInTitle: "gospodarstvo, delo in šport",
+    provider: "Ministrstvo za gospodarstvo, delo in šport",
     status: "open",
   },
   {
     source: "mkgp",
     parser: "govsi",
-    url: "https://www.gov.si/drzavni-organi/ministrstva/ministrstvo-za-kmetijstvo-gozdarstvo-in-prehrano/javne-objave/",
-    provider: "Ministrstvo za kmetijstvo, gozdarstvo in prehrano",
+    url: "https://www.gov.si/drzavni-organi/ministrstva/ministrstvo-za-kmetijstvo/javne-objave/",
+    expectInTitle: "ministrstva za kmetijstvo",
+    provider: "Ministrstvo za kmetijstvo",
+    status: "open",
+  },
+  {
+    // Energetika (obnovljivi viri, hranilniki, daljinsko ogrevanje, mobilnost).
+    source: "mzie",
+    parser: "govsi",
+    url: "https://www.gov.si/drzavni-organi/ministrstva/ministrstvo-za-infrastrukturo-in-energetiko/javne-objave/",
+    expectInTitle: "infrastrukturo in energetiko",
+    provider: "Ministrstvo za infrastrukturo in energetiko",
+    status: "open",
+  },
+  {
+    // Okolje in prostor (polnilna infrastruktura, električna vozila, LIFE ...).
+    // Stran javnih objav ima pri tem ministrstvu drugačno pot kot pri ostalih.
+    source: "mop",
+    parser: "govsi",
+    url: "https://www.gov.si/drzavni-organi/ministrstva/ministrstvo-za-okolje-in-prostor/javne-objave-ministrstva-za-okolje-podnebje-in-energijo/",
+    expectInTitle: "okolje in prostor",
+    provider: "Ministrstvo za okolje in prostor",
     status: "open",
   },
 ];
@@ -134,6 +157,24 @@ Deno.serve(async (req) => {
 
         const body = await res.text();
 
+        // Preverjanje veljavnosti vira: gov.si pri neznanem naslovu vrne 200 z drugo stranjo, stari naslovi
+        // po preoblikovanju vlade tiho preusmerjajo. Brez tega bi vir "deloval", a vračal napačne podatke.
+        if (page.expectInTitle) {
+          const pageTitle = (body.match(/<title>([\s\S]*?)<\/title>/i)?.[1] || "").trim();
+          if (!pageTitle.toLowerCase().includes(page.expectInTitle.toLowerCase())) {
+            const message = `${page.url}: stran ni več pričakovana (naslov: "${pageTitle.substring(0, 80)}")`;
+            results.errors.push(message);
+            sourceStats[page.source].errors.push(message);
+            pageFailures++;
+            continue;
+          }
+        }
+        if (res.redirected && new URL(res.url).pathname.replace(/\/$/, "") !== new URL(page.url).pathname.replace(/\/$/, "")) {
+          const message = `${page.url}: preusmerjeno na ${res.url}, posodobi naslov vira`;
+          results.errors.push(message);
+          sourceStats[page.source].errors.push(message);
+        }
+
         const grants = page.parser === "sps"
           ? parseSpsPosts(body, page.url)
           : page.parser === "aris"
@@ -148,6 +189,11 @@ Deno.serve(async (req) => {
 
         results.parsed += grants.length;
         sourceStats[page.source].parsed += grants.length;
+        if (grants.length === 0 && (page.parser === "govsi" || page.parser === "spirit")) {
+          const message = `${page.url}: stran ni vrnila nobenega razpisa (spremenjena struktura?)`;
+          results.errors.push(message);
+          sourceStats[page.source].errors.push(message);
+        }
 
         for (const grant of grants) {
           try {
@@ -1029,10 +1075,12 @@ function decodeHtmlEntities(value: string): string {
 
 // Objave, ki niso razpisi za podjetja (nimajo denarja ali niso namenjene podjetjem kot upravičencem).
 // Namenoma ozko: raje kakšna objava ostane med razpisi, kot da bi izginil pravi razpis.
-const NON_GRANT_TITLE = /(pripomb|upravn\w* odbor|nadzorn\w* svet|svet zavoda|predstavnik\w* ustanovitelj|recenzent|evidenc\w* (strokovnjakov|izvajalcev)|vpis\w* v (bazo|evidenco)|kandidir\w+ za (neodvisnega )?\w*\s*(start-up )?strokovnjak)/i;
+const NON_GRANT_TITLE = /(kandidatov za člana|rudarsk\w* pravic|pripomb|upravn\w* odbor|nadzorn\w* svet|svet zavoda|predstavnik\w* ustanovitelj|recenzent|evidenc\w* (strokovnjakov|izvajalcev)|vpis\w* v (bazo|evidenco)|kandidir\w+ za (neodvisnega )?\w*\s*(start-up )?strokovnjak)/i;
 
 function isNonGrantNotice(title: string): boolean {
-  return NON_GRANT_TITLE.test(title);
+  if (NON_GRANT_TITLE.test(title)) return true;
+  // Spodbude za fizične osebe (občane): podjetja niso upravičenci, razen samostojnih podjetnikov.
+  return /fizičn\w* osebam/i.test(title) && !/podjetnik|pravnim osebam/i.test(title);
 }
 
 function cleanHtmlText(value: string): string {
