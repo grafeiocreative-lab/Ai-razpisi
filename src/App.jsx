@@ -1159,12 +1159,14 @@ function AdminView({isMobile}){
   const[loading,setLoading]=useState(true);
   const[sourceHealth,setSourceHealth]=useState([]);
   const[grants,setGrants]=useState([]);
+  const[aiUsage,setAiUsage]=useState([]);
   useEffect(()=>{let active=true;(async()=>{
-    const[{data:health},{data:g}]=await Promise.all([
+    const[{data:health},{data:g},{data:usage}]=await Promise.all([
       sb.from("data_source_health").select("source,last_success,last_failure,failure_count,last_error,updated_at").order("source"),
       sb.from("grants").select("id,title,provider,status,source_url,deadline_at,raw_payload,last_checked_at").order("last_checked_at",{ascending:false}).limit(500),
+      sb.from("ai_usage").select("usage_date,input_tokens,output_tokens,request_count").order("usage_date",{ascending:false}).limit(14),
     ]);
-    if(active){setSourceHealth(health||[]);setGrants(g||[]);setLoading(false);}
+    if(active){setSourceHealth(health||[]);setGrants(g||[]);setAiUsage(usage||[]);setLoading(false);}
   })();return()=>{active=false;};},[]);
 
   const sourceLabel=source=>({evropskasredstva:"Evropska sredstva",jodp:"JODP",sps:"SPS",aris:"ARIS",ess:"ESS",ajpes:"AJPES/PRS",spirit:"SPIRIT Slovenija",mgts:"MGTŠ",mkgp:"MKGP"}[source]||source);
@@ -1181,7 +1183,9 @@ function AdminView({isMobile}){
     {label:"Napovedani",value:byStatus("upcoming")},
     {label:"Zaprti",value:byStatus("closed")},
     {label:"Za pregled",value:needsReview.length},
+    {label:"Objave brez denarja",value:byStatus("notice")},
   ];
+  const usageTokens=u=>(Number(u.input_tokens)||0)+(Number(u.output_tokens)||0);
 
   return(<div style={{flex:1,minWidth:0,overflowY:isMobile?"visible":"auto",padding:isMobile?"18px 16px 28px":"28px 28px 40px"}}>
     <div style={{marginBottom:28}}>
@@ -1215,6 +1219,21 @@ function AdminView({isMobile}){
             </div>
           );})}
         </div>
+      </div>
+
+      <div style={{marginBottom:28}}>
+        <div style={{fontSize:11,fontWeight:700,letterSpacing:".05em",color:c.t3,marginBottom:10}}>AI PORABA (zadnjih 14 dni)</div>
+        <div style={{borderTop:`1px solid ${c.border}`}}>
+          {aiUsage.length===0&&<div style={{padding:"14px 2px",fontSize:13,color:c.t3}}>Ni zabeležene porabe.</div>}
+          {aiUsage.map(u=>(
+            <div key={u.usage_date} style={{display:"flex",gap:isMobile?12:20,alignItems:"baseline",padding:"9px 2px",borderBottom:`1px solid ${c.border}`,fontSize:13,...tnum}}>
+              <div style={{minWidth:isMobile?86:110,color:c.t1,fontWeight:600}}>{new Date(u.usage_date).toLocaleDateString("sl-SI",{day:"numeric",month:"numeric",year:"numeric"})}</div>
+              <div style={{flex:1,color:c.t2}}>{usageTokens(u).toLocaleString("sl-SI")} žetonov</div>
+              <div style={{color:c.t3}}>{u.request_count} {pl(Number(u.request_count)||0,"zahtevek","zahtevka","zahtevki","zahtevkov")}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{fontSize:12,color:c.t3,marginTop:8}}>Dnevno omejitev nastavlja skrivnost AI_DAILY_TOKEN_BUDGET v Supabase (privzeto 300.000 žetonov). Ko je dosežena, AI pomočnik in povzetki počivajo do naslednjega dne.</div>
       </div>
 
       <div>

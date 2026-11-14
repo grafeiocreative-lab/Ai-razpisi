@@ -211,7 +211,7 @@ create index skd_lookup_parent_idx on ai_razpisi.skd_lookup using btree (parent_
 create index skd_lookup_section_idx on ai_razpisi.skd_lookup using btree (section_code);
 
 -- ── Row level security ────────────────────────────────────────────────────
--- ai_usage, crawl_log, grant_sources in prs_cache imajo RLS brez pravilnikov: dostop imata samo
+-- crawl_log, grant_sources in prs_cache imajo RLS brez pravilnikov: dostop imata samo
 -- service_role (edge funkcije) in lastnik. To je namerno.
 
 alter table ai_razpisi.ai_usage enable row level security;
@@ -226,6 +226,7 @@ alter table ai_razpisi.plan_interest enable row level security;
 alter table ai_razpisi.prs_cache enable row level security;
 alter table ai_razpisi.skd_lookup enable row level security;
 
+create policy ai_usage_public_read on ai_razpisi.ai_usage as permissive for select to anon, authenticated using (true);
 create policy companies_public_read on ai_razpisi.companies as permissive for select to anon, authenticated using (true);
 create policy data_source_health_public_read on ai_razpisi.data_source_health as permissive for select to public using (true);
 create policy de_minimis_records_public_read on ai_razpisi.de_minimis_records as permissive for select to anon, authenticated using (true);
@@ -237,6 +238,7 @@ create policy skd_lookup_public_read on ai_razpisi.skd_lookup as permissive for 
 -- ── Pravice (RLS sam ne zadostuje: service_role potrebuje izrecen GRANT) ──
 
 grant insert, select, update on ai_razpisi.ai_usage to service_role;
+grant select on ai_razpisi.ai_usage to anon, authenticated;
 grant delete, insert, select, update on ai_razpisi.companies to service_role;
 grant select on ai_razpisi.companies to anon, authenticated;
 grant delete, insert, select, update on ai_razpisi.crawl_log to service_role;
