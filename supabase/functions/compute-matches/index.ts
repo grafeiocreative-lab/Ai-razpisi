@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
   if (!resolvedId) {
     const { data } = await supabase
       .from("companies")
-      .select("id, region, size_class, interests, dm_free, skd_label")
+      .select("id, region, size_class, interests, dm_free, skd_label, skd_code, legal_form")
       .eq("registration_number", registrationNumber!)
       .maybeSingle();
     if (!data) return json({ error: "Podjetje ni najdeno v companies" }, 404);
@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
   } else {
     const { data } = await supabase
       .from("companies")
-      .select("id, region, size_class, interests, dm_free, skd_label")
+      .select("id, region, size_class, interests, dm_free, skd_label, skd_code, legal_form")
       .eq("id", resolvedId)
       .maybeSingle();
     company = data;
@@ -62,6 +62,8 @@ Deno.serve(async (req) => {
     region: body.region || (company as Record<string,unknown>)?.region || null,
     // Samoizbrana dejavnost (SKD naziv) — glej activityMatches() spodaj.
     skdLabel: body.skd_label || (company as Record<string,unknown>)?.skd_label || null,
+    skdCode: body.skd_code || (company as Record<string,unknown>)?.skd_code || null,
+    legalForm: (company as Record<string,unknown>)?.legal_form || null,
   };
 
   // Shrani profil (interesi/velikost/de minimis prostor) nazaj v companies —
@@ -82,7 +84,7 @@ Deno.serve(async (req) => {
   const today = new Date().toISOString();
   const { data: grants, error: grantsError } = await supabase
     .from("grants")
-    .select("id, title, eligible_sectors, eligible_regions, eligible_company_sizes, is_de_minimis, raw_summary, requirements, plain_language_summary, source_url")
+    .select("id, title, eligible_sectors, eligible_regions, eligible_company_sizes, is_de_minimis, raw_summary, requirements, plain_language_summary, source_url, eligibility")
     .in("status", ["open", "upcoming"])
     .or(`deadline_at.is.null,deadline_at.gte.${today}`)
     .limit(200);
@@ -138,6 +140,7 @@ interface GrantRow {
   raw_summary: string | null;
   requirements: string | null;
   plain_language_summary: string | null;
+  eligibility: { applicants?: string[]; sectors?: string[] } | null;
 }
 
 interface Profile {
@@ -146,6 +149,21 @@ interface Profile {
   dmFree: number;
   region: string | null;
   skdLabel: string | null;
+  skdCode: string | null;
+  legalForm: string | null;
+}
+
+// Kdo lahko kandidira: ista logika kot v src/App.jsx (applicantClasses, skdSection).
+const skdSection = (code: string | null | undefined) => /^[A-S]/i.test(String(code || "")) ? String(code)[0].toUpperCase() : null;
+function applicantClasses(legalForm: string | null | undefined, skdCode: string | null | undefined): string[] {
+  const lf = String(legalForm || "").toLowerCase();
+  const out: string[] = [];
+  if (/s\.p\.|samostojni podjetnik/.test(lf)) out.push("sp");
+  else if (/d\.o\.o|d\.d\.|d\.n\.o|k\.d\.|družba|poslovna enota/.test(lf)) out.push("podjetja");
+  else if (/zavod|društvo|ustanova|zadruga/.test(lf)) out.push("nevladne");
+  else out.push("podjetja", "sp");
+  if (skdSection(skdCode) === "A") out.push("kmetije");
+  return out;
 }
 
 // Ista tehnika kot identična kopija activityMatches() v src/App.jsx — obe morata ostati
@@ -206,6 +224,33 @@ function scoreGrant(row: GrantRow, profile: Record<string, unknown>): { score: n
   if (activityMatches(hay, p.skdLabel)) {
     s += 18;
     reasons.push(`Dejavnost „${p.skdLabel}“ se ujema z vsebino razpisa`);
+  }
+
+  // Kdo lahko kandidira (AI-izluščeno v scrape-grants). Brez podatka ostane razpis nevtralen.
+  const el = row.eligibility;
+  if (el) {
+    const ap = el.applicants || [];
+    if (ap.length) {
+      const cls = applicantClasses(p.legalForm, p.skdCode);
+      if (ap.some(a => cls.includes(a))) {
+        s += 8;
+        reasons.push("Podjetje spada med upravičence razpisa");
+      } else if (!(cls.includes("sp") && ap.includes("podjetja"))) {
+        s -= 35;
+        penalties.push("Razpis ni namenjen tej vrsti prijavitelja");
+      }
+    }
+    const sec = el.sectors || [];
+    if (sec.length) {
+      const cs = skdSection(p.skdCode);
+      if (cs) {
+        if (sec.includes(cs)) { s += 12; reasons.push("Dejavnost podjetja ustreza razpisu"); }
+        else { s -= 30; penalties.push("Razpis je omejen na druge dejavnosti"); }
+      } else {
+        s -= 10;
+        penalties.push("Razpis je omejen na določene dejavnosti, dejavnost podjetja ni znana");
+      }
+    }
   }
 
   // Velikost podjetja

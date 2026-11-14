@@ -117,7 +117,8 @@ create table if not exists ai_razpisi.grants (
   raw_payload jsonb,
   last_checked_at timestamp with time zone,
   created_at timestamp with time zone not null default now(),
-  updated_at timestamp with time zone not null default now()
+  updated_at timestamp with time zone not null default now(),
+  eligibility jsonb
 );
 
 create table if not exists ai_razpisi.grant_matches (

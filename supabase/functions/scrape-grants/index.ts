@@ -120,6 +120,13 @@ Deno.serve(async (req) => {
       return json({ ok: true, ai_summaries: processed, errors });
     }
 
+    if (reqBody?.only === "eligibility") {
+      if (!anthropicKey) return json({ ok: false, error: "Missing ANTHROPIC_API_KEY" }, 500);
+      const limit = Math.min(Math.max(Number(reqBody.limit) || 40, 1), 150);
+      const { processed, errors } = await extractEligibility(supabase, anthropicKey, limit);
+      return json({ ok: true, eligibility: processed, errors });
+    }
+
     const results = {
       inserted: 0,
       updated: 0,
@@ -218,6 +225,7 @@ Deno.serve(async (req) => {
               const updateFields: Record<string, unknown> = { ...fields };
               if ((fields.raw_summary ?? null) !== (existing.raw_summary ?? null)) {
                 updateFields.plain_language_summary = null;
+                updateFields.eligibility = null;
               }
               const { error } = await supabase
                 .from("grants")
@@ -264,6 +272,11 @@ Deno.serve(async (req) => {
       const { processed, errors: summaryErrors } = await generateSummaries(supabase, anthropicKey, 20);
       results.ai_summaries = processed;
       results.errors.push(...summaryErrors);
+    }
+
+    if (anthropicKey) {
+      const { errors: eligErrors } = await extractEligibility(supabase, anthropicKey, 25);
+      results.errors.push(...eligErrors);
     }
 
     const checkedAt = new Date().toISOString();
@@ -446,6 +459,115 @@ async function summarizeGrant(
 
   return {
     text,
+    inputTokens: Number(data.usage?.input_tokens || 0),
+    outputTokens: Number(data.usage?.output_tokens || 0),
+  };
+}
+
+// ── Kdo lahko kandidira ────────────────────────────────────────────────────
+// Večina razpisov ni namenjenih navadnemu podjetju (raziskovalne organizacije, kmetije, NVO, občani).
+// Brez tega podatka vsi razpisi dobijo enako izhodiščno oceno in vsa podjetja vidijo skoraj isti seznam.
+const APPLICANT_CODES = ["podjetja", "sp", "kmetije", "raziskovalne", "nevladne", "javni", "fizicne"];
+const SECTOR_LETTERS = "ABCDEFGHIJKLMNOPQRS".split("");
+
+async function extractEligibility(
+  supabase: ReturnType<typeof createClient>,
+  apiKey: string,
+  limit = 25,
+  concurrency = 4
+): Promise<{ processed: number; errors: string[] }> {
+  const errors: string[] = [];
+  let processed = 0;
+
+  const { data: grants, error } = await supabase
+    .from("grants")
+    .select("id, title, provider, raw_summary, requirements, eligible_sectors")
+    .is("eligibility", null)
+    .in("status", ["open", "upcoming"])
+    .order("deadline_at", { ascending: true, nullsFirst: false })
+    .limit(limit);
+
+  if (error) {
+    errors.push(`Upravičenci, poizvedba: ${error.message}`);
+    return { processed, errors };
+  }
+
+  const list = grants || [];
+  for (let i = 0; i < list.length; i += concurrency) {
+    const budget = await checkAiBudget(supabase);
+    if (!budget.ok) {
+      errors.push("Upravičenci ustavljeni: dnevna kvota žetonov je izčrpana");
+      break;
+    }
+    const batch = list.slice(i, i + concurrency);
+    const settled = await Promise.allSettled(batch.map(async (grant) => {
+      // Če odgovor ni uporaben JSON, razpis označimo kot neomejen (nevtralno ujemanje), da ga ne ponavljamo vsak dan.
+      const result = await classifyEligibility(apiKey, grant).catch((e) => {
+        if (String(e).includes("JSON")) return { eligibility: { applicants: [] as string[], sectors: [] as string[], unparsed: true }, inputTokens: 0, outputTokens: 0 };
+        throw e;
+      });
+      const { error: updateError } = await supabase
+        .from("grants")
+        .update({ eligibility: { ...result.eligibility, checked_at: new Date().toISOString() } })
+        .eq("id", grant.id);
+      if (updateError) throw new Error(`zapis: ${updateError.message}`);
+      return result;
+    }));
+
+    let inTok = 0, outTok = 0, calls = 0;
+    settled.forEach((r, k) => {
+      if (r.status === "fulfilled") {
+        processed++;
+        inTok += r.value.inputTokens;
+        outTok += r.value.outputTokens;
+        calls++;
+      } else {
+        errors.push(`Upravičenci "${batch[k].title}": ${String(r.reason)}`);
+      }
+    });
+    if (calls > 0) await recordAiUsage(supabase, inTok, outTok, calls);
+  }
+  return { processed, errors };
+}
+
+async function classifyEligibility(
+  apiKey: string,
+  grant: { title: string; provider: string | null; raw_summary: string | null; requirements: string | null; eligible_sectors: string[] | null }
+): Promise<{ eligibility: { applicants: string[]; sectors: string[] }; inputTokens: number; outputTokens: number }> {
+  const systemPrompt = `Iz besedila javnega razpisa v Sloveniji določiš, kdo lahko kandidira. Odgovoriš SAMO z JSON objektom, brez razlage. Ne ugibaj: kar iz besedila ali naslova ni razvidno, pusti prazno.`;
+  const opis = [grant.raw_summary, grant.requirements].filter(Boolean).join("\n\n").substring(0, 4500) || "(opisa ni, sklepaj samo iz naslova)";
+  const userPrompt =
+    `Naslov: ${grant.title}\nPonudnik: ${grant.provider || "ni znan"}\nOznake: ${(grant.eligible_sectors || []).join(", ") || "ni"}\nOpis: ${opis}\n\n` +
+    `Vrni JSON: {"applicants": [...], "sectors": [...]}\n` +
+    `applicants: kdo lahko kandidira, izbrano izmed: "podjetja" (gospodarske družbe, d.o.o., d.d., tudi mala in srednja podjetja), "sp" (samostojni podjetniki), "kmetije" (kmetijska gospodarstva, kmetje, dopolnilne dejavnosti na kmetiji), "raziskovalne" (raziskovalne organizacije, univerze, inštituti, raziskovalci), "nevladne" (društva, zavodi, ustanove, nevladne organizacije), "javni" (občine, država, javni zavodi), "fizicne" (posamezniki, občani, študenti, brezposelni). Navedi vse, ki jih besedilo dovoljuje. Če besedilo upravičencev ne omeji ali jih ne omenja, vrni [].\n` +
+    `sectors: v katere dejavnosti (oddelki SKD, črke A do S) mora podjetje spadati, SAMO če besedilo to izrecno zahteva (npr. kmetijstvo=A, predelovalne dejavnosti=C, gradbeništvo=F, promet=H, gostinstvo in turizem=I, informacijske dejavnosti=J, kultura in šport=R). Če razpis ni omejen na dejavnost, vrni [].`;
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    signal: AbortSignal.timeout(30_000),
+    headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({
+      model: "claude-sonnet-5",
+      max_tokens: 200,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userPrompt }],
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`Anthropic API HTTP ${res.status}: ${(await res.text()).substring(0, 200)}`);
+  }
+  const data = await res.json();
+  if (data.stop_reason === "refusal") throw new Error("Anthropic API je zavrnil zahtevo (refusal)");
+  const text = String((data.content || []).find((b: { type: string }) => b.type === "text")?.text || "");
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error("odgovor ni JSON");
+  let parsed: { applicants?: unknown; sectors?: unknown };
+  try { parsed = JSON.parse(match[0]); } catch { throw new Error("neveljaven JSON"); }
+
+  const applicants = Array.isArray(parsed.applicants) ? [...new Set(parsed.applicants.map(String).filter((a) => APPLICANT_CODES.includes(a)))] : [];
+  const sectors = Array.isArray(parsed.sectors) ? [...new Set(parsed.sectors.map((x) => String(x).toUpperCase().charAt(0)).filter((l) => SECTOR_LETTERS.includes(l)))] : [];
+  return {
+    eligibility: { applicants, sectors },
     inputTokens: Number(data.usage?.input_tokens || 0),
     outputTokens: Number(data.usage?.output_tokens || 0),
   };
