@@ -267,12 +267,19 @@ Deno.serve(async (req) => {
     }
 
     const checkedAt = new Date().toISOString();
+    // failure_count = število DNI zapored z napako (ne napak v enem teku): ob uspehu 0, ob napaki +1 največ enkrat
+    // na dan. last_success se ob napaki ohrani, da je razvidno, kdaj je vir nazadnje deloval.
+    const { data: prevRows } = await supabase.from("data_source_health").select("source, last_success, last_failure, failure_count");
+    const prev = new Map((prevRows ?? []).map((r: { source: string; last_success: string | null; last_failure: string | null; failure_count: number | null }) => [r.source, r]));
     for (const [source, stat] of Object.entries(sourceStats)) {
+      const old = prev.get(source);
+      const failed = stat.errors.length > 0;
+      const sameDayFailure = !!old?.last_failure && old.last_failure.slice(0, 10) === checkedAt.slice(0, 10) && (old.failure_count ?? 0) > 0;
       await supabase.from("data_source_health").upsert({
         source,
-        last_success: stat.errors.length === 0 ? checkedAt : null,
-        last_failure: stat.errors.length > 0 ? checkedAt : null,
-        failure_count: stat.errors.length,
+        last_success: failed ? (old?.last_success ?? null) : checkedAt,
+        last_failure: failed ? checkedAt : (old?.last_failure ?? null),
+        failure_count: failed ? (sameDayFailure ? (old?.failure_count ?? 1) : (old?.failure_count ?? 0) + 1) : 0,
         last_error: stat.errors[0] || null,
         updated_at: checkedAt,
       }, { onConflict: "source" });

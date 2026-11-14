@@ -1,0 +1,30 @@
+name: Check sources
+
+# Enkrat tedensko preveri, ali kateri vir razpisov že 10 dni zapored vrača napako.
+# Če je tako, delovni tok pade, GitHub pa o tem sam obvesti lastnika repozitorija po e-pošti.
+on:
+  schedule:
+    - cron: "30 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  check-sources:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check data_source_health
+        env:
+          SUPABASE_URL: https://cseifhrfmemvizwbmyjd.supabase.co
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          set -euo pipefail
+          rows="$(curl -fsS "$SUPABASE_URL/rest/v1/data_source_health?select=source,failure_count,last_success,last_error" \
+            -H "apikey: $SUPABASE_ANON_KEY" -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+            -H "Accept-Profile: ai_razpisi")"
+          echo "$rows" | jq -r '.[] | "\(.source): dni z napako \(.failure_count), zadnji uspeh \(.last_success // "nikoli")"'
+          bad="$(echo "$rows" | jq -r '[.[] | select(.failure_count >= 10) | .source] | join(", ")')"
+          if [ -n "$bad" ]; then
+            echo "::error::Viri z napako 10 dni zapored ali dlje: $bad"
+            exit 1
+          fi

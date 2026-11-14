@@ -1255,7 +1255,7 @@ function AdminView({isMobile}){
               <div style={{fontSize:13,fontWeight:600,color:c.t1,minWidth:150,flexShrink:0}}>{sourceLabel(item.source)}</div>
               <Status ok={ok} label={ok?"deluje":"napaka"}/>
               <div style={{fontSize:12,color:c.t2,...tnum,minWidth:170}}>zadnji uspeh: {formatDateTime(item.last_success)}</div>
-              <div style={{fontSize:12,color:c.t2,...tnum,minWidth:80}}>napak: {item.failure_count||0}</div>
+              <div style={{fontSize:12,color:c.t2,...tnum,minWidth:80}}>dni z napako: {item.failure_count||0}</div>
               {item.last_error&&<div style={{fontSize:12,color:c.coral,wordBreak:"break-word",flex:1,minWidth:0}}>{item.last_error}</div>}
             </div>
           );})}
