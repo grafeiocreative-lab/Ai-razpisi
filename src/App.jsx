@@ -894,6 +894,8 @@ function ArchiveView({isMobile}){
 }
 
 /* ═══ AI POMOČNIK ══════════════════════════════════ */
+// Odgovori so prikazani kot navadno besedilo, zato Markdown oznake (**krepko**, # naslovi, - alineje) odstranimo.
+const plainReply=t=>String(t||"").replace(/\*\*(.+?)\*\*/g,"$1").replace(/__(.+?)__/g,"$1").replace(/^#{1,6}\s+/gm,"").replace(/^\s*[-*]\s+/gm,"• ");
 // Samo pogovor (Q&A) o razpisih/profilu — brez tool use, ne spreminja ničesar v bazi.
 function AiAssistantChat({companyId}){
   const isMobile=useIsMobile();
@@ -943,7 +945,7 @@ function AiAssistantChat({companyId}){
       </div>}
       {messages.map((m,i)=>(
         <div key={i} style={{alignSelf:m.role==="user"?"flex-end":"flex-start",maxWidth:isMobile?"90%":560}}>
-          <div style={{padding:"12px 16px",borderRadius:14,fontSize:14,lineHeight:1.55,whiteSpace:"pre-line",background:m.role==="user"?c.graphite:c.cream,color:m.role==="user"?c.white:c.t1}}>{m.content}</div>
+          <div style={{padding:"12px 16px",borderRadius:14,fontSize:14,lineHeight:1.55,whiteSpace:"pre-line",background:m.role==="user"?c.graphite:c.cream,color:m.role==="user"?c.white:c.t1}}>{m.role==="user"?m.content:plainReply(m.content)}</div>
         </div>
       ))}
       {loading&&<div style={{alignSelf:"flex-start",padding:"12px 16px",borderRadius:14,background:c.cream,fontSize:13,color:c.t2}}>Razmišljam …</div>}
