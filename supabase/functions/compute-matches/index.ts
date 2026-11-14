@@ -295,6 +295,12 @@ function scoreGrant(row: GrantRow, profile: Record<string, unknown>): { score: n
     }
   }
 
+  // Razpis, pri katerem upravičenci še niso preverjeni (nov, čaka na razvrstitev), ne sme veljati za ujemanje (< 60).
+  if (row.eligibility === null || row.eligibility === undefined) {
+    s = Math.min(s, 55);
+    penalties.push("Upravičenci razpisa še niso preverjeni");
+  }
+
   return {
     score: Math.min(95, Math.max(10, s)),
     breakdown: { base: 50, reasons, penalties, final: Math.min(95, Math.max(10, s)) },

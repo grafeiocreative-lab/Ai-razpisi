@@ -1118,6 +1118,8 @@ function scoreGrant(row,profile){
   }else{
     s+=Math.min(30,tags.length*6)+(row.is_de_minimis?5:0);
   }
+  // Razpis, pri katerem upravičenci še niso preverjeni (nov, čaka na razvrstitev), ne sme veljati za ujemanje (< 60).
+  if(profile&&row.eligibility===null)s=Math.min(s,55);
   return Math.min(95,Math.max(10,s));
 }
 
@@ -1145,6 +1147,7 @@ function mapGrant(row,profile){
     icon:tags.join(" ").toLowerCase().includes("digital")?"digital":tags.join(" ").toLowerCase().includes("zeleni")?"green":"grant",
     matchScore:Math.min(95,score),
     topMatch:false,
+    pendingCheck:!!profile&&row.eligibility===null,
     cofinancing:row.funding_rate?`${row.funding_rate}%`:"ni navedeno",
     region:(row.eligible_regions||[]).join(", ")||"Slovenija",
     aiSummary:summary,
@@ -1454,6 +1457,7 @@ function Dashboard({maticna,profile}){
                   <Tag label={g.fundingType.toUpperCase()} variant="quality"/>
                   {hasDeadline&&urgency.level==="urgent"&&<Tag label={`ROK ${g.deadline}`} variant="deadline"/>}
                   {g.qualityStatus!=="verified"&&<Tag label={g.qualityLabel} variant="quality"/>}
+                  {g.pendingCheck&&<Tag label="ŠE V PREVERJANJU" variant="quality"/>}
                 </div>
                 {isMobile&&<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,marginTop:10}}><Score value={g.matchScore}/><div style={{textAlign:"right"}}><div style={{fontSize:14,fontWeight:700,color:c.t1,...tnum}}>{g.amountLabel}</div>{hasDeadline&&<div style={{fontSize:11,marginTop:2,...tnum,color:urgency.level==="urgent"?c.coral:urgency.level==="soon"?c.amber:c.t2,fontWeight:urgency.level==="urgent"||urgency.level==="soon"?700:400}}>{g.deadline}</div>}</div></div>}
               </div>

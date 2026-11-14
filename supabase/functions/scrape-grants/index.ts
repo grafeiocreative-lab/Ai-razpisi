@@ -266,17 +266,18 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Upravičenci najprej (vplivajo na pravilnost ujemanja), šele nato povzetki. Obe opravili porabljata isto dnevno kvoto žetonov.
+    if (anthropicKey) {
+      const { errors: eligErrors } = await extractEligibility(supabase, anthropicKey, 40);
+      results.errors.push(...eligErrors);
+    }
+
     // AI povzetki: po scrape-u in upsert-u poišči razpise brez plain_language_summary
     // in jih dopolni s pomočjo Claude Sonnet 5 (največ 20 na klic, po 4 vzporedno).
     if (anthropicKey) {
       const { processed, errors: summaryErrors } = await generateSummaries(supabase, anthropicKey, 20);
       results.ai_summaries = processed;
       results.errors.push(...summaryErrors);
-    }
-
-    if (anthropicKey) {
-      const { errors: eligErrors } = await extractEligibility(supabase, anthropicKey, 25);
-      results.errors.push(...eligErrors);
     }
 
     const checkedAt = new Date().toISOString();
