@@ -15,6 +15,15 @@ const sb=import.meta.env.VITE_SUPABASE_URL
   ?createClient(import.meta.env.VITE_SUPABASE_URL,import.meta.env.VITE_SUPABASE_ANON_KEY,{db:{schema:"ai_razpisi"}})
   :null;
 
+// Profil podjetja (in njegovi de minimis zapisi) prek funkcije company-profile: tabele companies in
+// de_minimis_records anonimni ključ ne more več brati, da obiskovalec ne bi mogel prebrati vseh podjetij.
+async function fetchCompanyProfile(registrationNumber){
+  if(!sb||!registrationNumber)return{company:null,deMinimis:[]};
+  const{data,error}=await sb.functions.invoke("company-profile",{body:{registration_number:String(registrationNumber)}});
+  if(error)return{company:null,deMinimis:[]};
+  return{company:data?.company||null,deMinimis:data?.de_minimis||[]};
+}
+
 /* ═══ TOKENS ═══════════════════════════════════════ */
 const c={graphite:"#071014",ivory:"#F7F4EC",cream:"#EFEADF",olive:"#7F9656",oliveLight:"rgba(127,150,86,0.08)",oliveMed:"rgba(127,150,86,0.15)",amber:"#D9A441",amberLight:"rgba(217,164,65,0.12)",border:"#DDD7C8",t1:"#101418",t2:"#62645F",t3:"#8A8A82",white:"#FFFFFF",signal:"#5B7CFA",signalLight:"rgba(91,124,250,0.12)",coral:"#C85A3A"};
 const f="'Inter',system-ui,-apple-system,sans-serif";
@@ -576,7 +585,7 @@ function Onboarding({onComplete,onBack}){
       sb.functions.invoke("compute-matches",{body:{company_id:cid,interests:[...sel],kmu,dm_free:dmFree,region:co?.region||null,skd_code:skdCode||null,skd_label:skdLabel||null}}).then(({error})=>{if(error)console.error("compute-matches ni uspel:",error);}).catch(err=>console.error("compute-matches ni uspel:",err));
     }
   })();return()=>{active=false;};},[step]);
-  useEffect(()=>{if(step!==2)return;setAjpesStatus("pending");setJodpStatus("pending");setAjpesResult(null);setJodpResult(null);const started=Date.now();const minShow=900;(async()=>{const[ajpes,jodp]=await Promise.allSettled([sb.functions.invoke("fetch-ajpes",{body:{registration_number:iv}}),sb.functions.invoke("fetch-jodp",{body:{registration_number:iv}})]);if(jodp.status==="fulfilled"){setJodpResult(jodp.value.data);setJodpStatus(jodp.value.data?.ok===false?"error":"ok");}else setJodpStatus("error");let company=ajpes.status==="fulfilled"?ajpes.value.data?.company:null;if(!company){const{data}=await sb.from("companies").select("*").eq("registration_number",iv).maybeSingle();company=data;}if(company){setAjpesResult({ok:true,company});setAjpesStatus("ok");}else setAjpesStatus("error");const wait=Math.max(0,minShow-(Date.now()-started));setTimeout(()=>setStep(3),wait);})();},[step]);
+  useEffect(()=>{if(step!==2)return;setAjpesStatus("pending");setJodpStatus("pending");setAjpesResult(null);setJodpResult(null);const started=Date.now();const minShow=900;(async()=>{const[ajpes,jodp]=await Promise.allSettled([sb.functions.invoke("fetch-ajpes",{body:{registration_number:iv}}),sb.functions.invoke("fetch-jodp",{body:{registration_number:iv}})]);if(jodp.status==="fulfilled"){setJodpResult(jodp.value.data);setJodpStatus(jodp.value.data?.ok===false?"error":"ok");}else setJodpStatus("error");let company=ajpes.status==="fulfilled"?ajpes.value.data?.company:null;if(!company){const cp=await fetchCompanyProfile(iv);company=cp.company;}if(company){setAjpesResult({ok:true,company});setAjpesStatus("ok");}else setAjpesStatus("error");const wait=Math.max(0,minShow-(Date.now()-started));setTimeout(()=>setStep(3),wait);})();},[step]);
   const kmuOk=e<250&&r<50;const toggleI=id=>{const s=new Set(sel);s.has(id)?s.delete(id):s.add(id);setSel(s);};
   const btn={width:"100%",height:52,borderRadius:radius.md,border:"none",background:c.graphite,color:c.white,fontSize:15,fontWeight:600,fontFamily:f,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8};
   const mc={name:co?.company_name||"Podjetje ni najdeno v PRS cache",noMaticna:co?.source==="vies",maticna:co?.registration_number||iv,taxNumber:co?.tax_number||"—",address:co?.address||"—",region:co?.region||co?.municipality||"—",nuts:co?.nuts||"—",legalForm:co?.legal_form||"—",founded:co?.founded_year||"—",age:co?.founded_year?new Date().getFullYear()-co.founded_year:"—",skdMain:co?.main_activity_code||"—",skdMainLabel:co?.main_activity_name||"—",skdOther:[]};
@@ -642,12 +651,9 @@ function DeMinimisSection({maticna,limited=false}){
     if(!maticna){setLoading(false);return;}
     let active=true;
     (async()=>{
-      const{data:co}=await sb.from("companies").select("id").eq("registration_number",maticna).maybeSingle();
+      const cp=await fetchCompanyProfile(maticna);
       if(!active)return;
-      if(!co?.id){setLoading(false);return;}
-      const{data}=await sb.from("de_minimis_records").select("*").eq("company_id",co.id).order("granted_date",{ascending:false});
-      if(!active)return;
-      setRecs(data||[]);setLoading(false);
+      setRecs(cp.deMinimis);setLoading(false);
     })();
     return()=>{active=false;};
   },[maticna]);
@@ -965,7 +971,7 @@ function AiAssistantChat({companyId}){
 function CompanyProfile({maticna,grantItems=[],onGoToGrants}){
   const isMobile=useIsMobile();
   const[company,setCompany]=useState(null);const[loading,setLoading]=useState(true);
-  useEffect(()=>{if(!maticna){setLoading(false);return;}let active=true;(async()=>{const{data}=await sb.from("companies").select("*").eq("registration_number",maticna).maybeSingle();if(active){setCompany(data||null);setLoading(false);}})();return()=>{active=false;};},[maticna]);
+  useEffect(()=>{if(!maticna){setLoading(false);return;}let active=true;(async()=>{const cp=await fetchCompanyProfile(maticna);if(active){setCompany(cp.company);setLoading(false);}})();return()=>{active=false;};},[maticna]);
   // main_activity_* = pravi AJPES podatek (zdaj vedno prazen, brezplačni vir ga ne vrne).
   // skd_* = uporabnik sam izbral v onboardingu — jasno ločeno v prikazu (glej skdSelfDeclared spodaj).
   const skdSelfDeclared=!company?.main_activity_code&&!!company?.skd_code;
@@ -1289,7 +1295,7 @@ function Dashboard({maticna,profile}){
     if(mapped.length){setGrantItems(mapped);setSel(mapped[0]);}
   })();return()=>{active=false;};},[profileKey]);
   useEffect(()=>{let active=true;(async()=>{const{data}=await sb.from("data_source_health").select("source,last_success,last_failure,failure_count,last_error,updated_at").order("source");if(active)setSourceHealth(data||[]);})();return()=>{active=false;};},[]);
-  useEffect(()=>{if(!maticna)return;let active=true;(async()=>{const{data}=await sb.from("companies").select("id,company_name,legal_form,skd_code,skd_label,interests,size_class,dm_free,region").eq("registration_number",maticna).maybeSingle();if(active)setCompany(data||null);})();return()=>{active=false;};},[maticna]);
+  useEffect(()=>{if(!maticna)return;let active=true;(async()=>{const cp=await fetchCompanyProfile(maticna);if(active)setCompany(cp.company);})();return()=>{active=false;};},[maticna]);
   // Iskanje po naslovu/razpisovalcu/tipu/viru/oznakah, dodano NA VRH obstoječega kategorijskega
   // filtra (af) — ne nadomešča ga, samo dodatno zoži prikazan seznam (glej filterGrants zgoraj).
   useEffect(()=>{const filtered=filterGrants(grantItems,af,searchQuery);if(filtered.length&&!filtered.some(g=>g.id===sel?.id)){setSel(filtered[0]);setShowD(true);}},[af,grantItems,sel?.id,searchQuery]);

@@ -32,6 +32,45 @@ async function recordAiUsage(supabase: ReturnType<typeof createClient>, inputTok
   if (upsertError) console.error("ai_usage upsert napaka:", upsertError.message);
 }
 
+const LIMIT_PER_HOUR = 20;
+const LIMIT_PER_DAY = 60;
+
+async function callerHash(req: Request): Promise<string> {
+  const ip = (req.headers.get("cf-connecting-ip") || req.headers.get("x-forwarded-for") || "unknown").split(",")[0].trim();
+  const salt = Deno.env.get("SCRAPE_GRANTS_SECRET") || "ai-razpisi";
+  const bytes = new TextEncoder().encode(`${salt}:${ip}`);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 32);
+}
+
+// Vrne sporočilo za uporabnika, če je omejitev presežena, sicer zabeleži klic in vrne null.
+async function checkRateLimit(supabase: ReturnType<typeof createClient>, req: Request, companyId: string | null): Promise<string | null> {
+  try {
+    const hash = await callerHash(req);
+    const hourAgo = new Date(Date.now() - 3600_000).toISOString();
+    const dayAgo = new Date(Date.now() - 86_400_000).toISOString();
+    const { count: hourCount } = await supabase.from("ai_assistant_calls").select("id", { count: "exact", head: true }).eq("caller_hash", hash).gte("created_at", hourAgo);
+    if ((hourCount ?? 0) >= LIMIT_PER_HOUR) {
+      return "Poslali ste veliko vprašanj v kratkem času. Poskusite znova čez nekaj minut.";
+    }
+    if (companyId) {
+      const { count: dayCount } = await supabase.from("ai_assistant_calls").select("id", { count: "exact", head: true }).eq("company_id", companyId).gte("created_at", dayAgo);
+      if ((dayCount ?? 0) >= LIMIT_PER_DAY) {
+        return "Za to podjetje ste danes dosegli omejitev vprašanj. Poskusite znova jutri.";
+      }
+    }
+    await supabase.from("ai_assistant_calls").insert({ caller_hash: hash, company_id: companyId });
+    // Sprotno čiščenje: zapise starejše od dveh dni ne potrebujemo.
+    if (Math.random() < 0.05) {
+      await supabase.from("ai_assistant_calls").delete().lt("created_at", new Date(Date.now() - 2 * 86_400_000).toISOString());
+    }
+  } catch (e) {
+    // Napaka pri štetju ne sme onemogočiti pomočnika; dnevna kvota žetonov še vedno velja.
+    console.error("rate limit napaka:", String(e));
+  }
+  return null;
+}
+
 // AI pomočnik: samo pogovor o razpisih/profilu podjetja (brez tool use, ne spreminja baze).
 // Kontekst (profil + do 15 najbolje ujemajočih razpisov) se pošlje ob vsakem klicu —
 // brez shranjene seje na strežniku, zgodovino pogovora pošilja frontend.
@@ -64,6 +103,13 @@ Deno.serve(async (req) => {
     const budget = await checkAiBudget(supabase);
     if (!budget.ok) {
       return json({ reply: "AI pomočnik je danes dosegel dnevno omejitev uporabe. Poskusite znova jutri." });
+    }
+
+    // Omejitev na uporabnika: skupna dnevna kvota žetonov je skupna, zato je en klicatelj ne sme izprazniti.
+    // Klicatelj je zgoščen IP (brez shranjevanja naslova), poleg tega omejimo še klice na podjetje.
+    const limited = await checkRateLimit(supabase, req, companyId);
+    if (limited) {
+      return json({ reply: limited });
     }
 
     // Profil podjetja (za kontekst, ne za spreminjanje)
