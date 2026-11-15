@@ -15,6 +15,7 @@ Zato z živo bazo niso skladne: nobena ne omenja `ai_razpisi`, manjkajo pa tudi 
 |---|---|
 | `baseline/ai_razpisi_schema.sql` | Celotna shema `ai_razpisi`: tabele, ključi, indeksi, RLS, pravilniki, pravice, pogled, sprožilec. Generirano iz žive baze 2026-11-13. |
 | `baseline/ai_razpisi_skd_lookup_seed.sql` | Podatki za `skd_lookup` (1725 vrstic). |
+| `baseline/cron.sql` | Zaplanirano dnevno osveževanje razpisov (pg_cron + Vault). Skrivnost ni v datoteki. |
 
 Uporaba: samo za postavitev iz nič (nov projekt, preview branch). Najprej shema, nato seed, nato v
 Dashboardu (Settings → API → Exposed schemas) izpostavi `ai_razpisi`. Sheme ni mogoče samodejno primerjati
@@ -25,7 +26,14 @@ z živo bazo, zato ob vsaki spremembi sheme posnetek osveži ali dodaj novo migr
 Vsaka nova tabela v `ai_razpisi` potrebuje izrecen `GRANT` za vloge, ki jih uporablja (RLS pravilnik ne zadostuje,
 `service_role` brez `GRANT` tiho dobi `permission denied`). Za shemo `public` velja od 30. 10. 2026 enako za vse vloge.
 
+## Dostop do podatkov
+
+`companies`, `de_minimis_records` in `grant_matches` za `anon` in `authenticated` nista berljivi. Aplikacija bere eno podjetje
+prek edge funkcije `company-profile` (po matični številki), vse ostalo teče prek `service_role` v edge funkcijah.
+Skupna koda ocenjevanja je v `functions/_shared/scoring.ts` (uporabljata jo aplikacija in `compute-matches`), tipi baze
+v `functions/_shared/database.types.ts` (osveži: `supabase gen types typescript --linked --schema ai_razpisi`).
+
 ## Edge funkcije
 
-Deploy na pravi projekt prek Supabase MCP (`deploy_edge_function`, `project_id: cseifhrfmemvizwbmyjd`).
-Lokalni Supabase CLI je lahko povezan na star projekt, zato ga pred deployem preveri (`supabase projects list`).
+Deploy: `supabase functions deploy <ime> --project-ref cseifhrfmemvizwbmyjd --no-verify-jwt --use-api` (CLI 2.x).
+SQL na živi bazi: `supabase db query --linked "..."`.

@@ -1,4 +1,12 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import type { Database } from "../_shared/database.types.ts";
+
+const makeClient = (url: string, key: string) =>
+  createClient<Database, "ai_razpisi">(url, key, { db: { schema: "ai_razpisi" } });
+type Db = ReturnType<typeof makeClient>;
+// Parserji vračajo prosto oblikovane zapise; tu jih zožimo na vrstico tabele grants.
+type GrantInsert = Database["ai_razpisi"]["Tables"]["grants"]["Insert"];
+type GrantUpdate = Database["ai_razpisi"]["Tables"]["grants"]["Update"];
 
 const PAGES = [
   {
@@ -108,7 +116,7 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: "Unauthorized" }, 401);
     }
 
-    const supabase = createClient(supabaseUrl, serviceRoleKey, { db: { schema: "ai_razpisi" } });
+    const supabase = makeClient(supabaseUrl, serviceRoleKey);
 
     // Način samo za AI povzetke: ne osvežuje razpisov, samo dopolni manjkajoče povzetke
     // (npr. po izpadu ključa). Omejeno z dnevno kvoto žetonov in z `limit` (največ 60).
@@ -262,7 +270,7 @@ Deno.serve(async (req) => {
               }
               const { error } = await supabase
                 .from("grants")
-                .update(updateFields)
+                .update(updateFields as GrantUpdate)
                 .eq("id", existing.id);
 
               if (error) {
@@ -275,7 +283,7 @@ Deno.serve(async (req) => {
             } else {
               const { error } = await supabase
                 .from("grants")
-                .insert(grant);
+                .insert(grant as GrantInsert);
 
               if (error) {
                 const message = `Insert "${grant.title}": ${error.message}`;
@@ -351,14 +359,14 @@ Deno.serve(async (req) => {
 // prek skupne tabele ai_usage. Nastavljivo prek AI_DAILY_TOKEN_BUDGET secreta.
 const DAILY_TOKEN_BUDGET = Number(Deno.env.get("AI_DAILY_TOKEN_BUDGET")) || 300_000;
 
-async function checkAiBudget(supabase: ReturnType<typeof createClient>): Promise<{ ok: boolean; used: number }> {
+async function checkAiBudget(supabase: Db): Promise<{ ok: boolean; used: number }> {
   const today = new Date().toISOString().slice(0, 10);
   const { data } = await supabase.from("ai_usage").select("input_tokens, output_tokens").eq("usage_date", today).maybeSingle();
   const used = Number(data?.input_tokens || 0) + Number(data?.output_tokens || 0);
   return { ok: used < DAILY_TOKEN_BUDGET, used };
 }
 
-async function recordAiUsage(supabase: ReturnType<typeof createClient>, inputTokens: number, outputTokens: number, requests = 1) {
+async function recordAiUsage(supabase: Db, inputTokens: number, outputTokens: number, requests = 1) {
   const today = new Date().toISOString().slice(0, 10);
   const { data, error: selectError } = await supabase.from("ai_usage").select("input_tokens, output_tokens, request_count").eq("usage_date", today).maybeSingle();
   if (selectError) console.error("ai_usage select napaka:", selectError.message);
@@ -377,7 +385,7 @@ async function recordAiUsage(supabase: ReturnType<typeof createClient>, inputTok
 // Največ `limit` na klic, po `concurrency` vzporedno. Poraba žetonov se beleži enkrat na paket
 // (vzporedno branje in pisanje v ai_usage bi sicer izgubilo del štetja).
 async function generateSummaries(
-  supabase: ReturnType<typeof createClient>,
+  supabase: Db,
   apiKey: string,
   limit = 20,
   concurrency = 4
@@ -509,7 +517,7 @@ const APPLICANT_CODES = ["podjetja", "sp", "kmetije", "raziskovalne", "nevladne"
 const SECTOR_LETTERS = "ABCDEFGHIJKLMNOPQRS".split("");
 
 async function extractEligibility(
-  supabase: ReturnType<typeof createClient>,
+  supabase: Db,
   apiKey: string,
   limit = 25,
   concurrency = 4
@@ -629,7 +637,7 @@ async function classifyEligibility(
   };
 }
 
-async function closeExpiredGrants(supabase: ReturnType<typeof createClient>): Promise<number> {
+async function closeExpiredGrants(supabase: Db): Promise<number> {
   const now = new Date().toISOString();
   const { data, error } = await supabase
     .from("grants")
@@ -865,7 +873,7 @@ async function parseSpiritTenders(jsonText: string, sourcePageUrl: string): Prom
 // objavo (pri dveh ministrstvih hitro 40-50 klicev), kar je enkrat dejansko preseglo časovno
 // omejitev edge funkcije (HTTP 546). Besedilo objave se po objavi skoraj nikoli ne spremeni,
 // zato je varno enkrat pridobljeno vsebino ponovno uporabiti namesto vsakodnevnega ponovnega klica.
-async function parseGovSiJavneObjave(html: string, sourcePageUrl: string, provider: string, supabase: ReturnType<typeof createClient>): Promise<Record<string, unknown>[]> {
+async function parseGovSiJavneObjave(html: string, sourcePageUrl: string, provider: string, supabase: Db): Promise<Record<string, unknown>[]> {
   const GOVSI_BASE = "https://www.gov.si";
   const rows = [...html.matchAll(/<tr>([\s\S]*?)<\/tr>/g)];
 
@@ -1074,14 +1082,14 @@ function parseArisGrants(html: string, sourcePageUrl: string, defaultStatus: str
 }
 
 async function findExistingGrant(
-  supabase: ReturnType<typeof createClient>,
+  supabase: Db,
   grant: Record<string, unknown>
 ) {
   if (grant.source_url) {
     const { data } = await supabase
       .from("grants")
       .select("id, raw_summary")
-      .eq("source_url", grant.source_url)
+      .eq("source_url", String(grant.source_url))
       .maybeSingle();
 
     if (data) return data;
@@ -1090,7 +1098,7 @@ async function findExistingGrant(
   const { data } = await supabase
     .from("grants")
     .select("id, raw_summary")
-    .eq("title", grant.title)
+    .eq("title", String(grant.title))
     .maybeSingle();
 
   return data;

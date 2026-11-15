@@ -121,6 +121,13 @@ create table if not exists ai_razpisi.grants (
   eligibility jsonb
 );
 
+create table if not exists ai_razpisi.ai_assistant_calls (
+  id bigint generated always as identity primary key,
+  caller_hash text not null,
+  company_id uuid,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists ai_razpisi.grant_matches (
   id uuid not null default gen_random_uuid(),
   company_id uuid,
@@ -203,6 +210,8 @@ alter table ai_razpisi.grants add constraint grants_source_id_fkey foreign key (
 -- ── Indeksi ───────────────────────────────────────────────────────────────
 
 create unique index de_minimis_records_uidx on ai_razpisi.de_minimis_records using btree (company_id, mssi_number, granted_date, amount) nulls not distinct;
+create index ai_assistant_calls_caller_idx on ai_razpisi.ai_assistant_calls using btree (caller_hash, created_at desc);
+create index ai_assistant_calls_company_idx on ai_razpisi.ai_assistant_calls using btree (company_id, created_at desc);
 create index grant_matches_company_idx on ai_razpisi.grant_matches using btree (company_id);
 create index grant_matches_score_idx on ai_razpisi.grant_matches using btree (company_id, match_score desc);
 create unique index grant_matches_company_grant_uidx on ai_razpisi.grant_matches using btree (company_id, grant_id);
@@ -211,10 +220,13 @@ create index skd_lookup_level_idx on ai_razpisi.skd_lookup using btree (level);
 create index skd_lookup_parent_idx on ai_razpisi.skd_lookup using btree (parent_code);
 create index skd_lookup_section_idx on ai_razpisi.skd_lookup using btree (section_code);
 
+-- Podatki podjetij (companies, de_minimis_records, grant_matches) za anon in authenticated NISO berljivi:
+-- aplikacija jih bere prek edge funkcije company-profile (po eni matični številki), ostalo samo service_role.
 -- ── Row level security ────────────────────────────────────────────────────
 -- crawl_log, grant_sources in prs_cache imajo RLS brez pravilnikov: dostop imata samo
 -- service_role (edge funkcije) in lastnik. To je namerno.
 
+alter table ai_razpisi.ai_assistant_calls enable row level security;
 alter table ai_razpisi.ai_usage enable row level security;
 alter table ai_razpisi.companies enable row level security;
 alter table ai_razpisi.crawl_log enable row level security;
@@ -228,28 +240,23 @@ alter table ai_razpisi.prs_cache enable row level security;
 alter table ai_razpisi.skd_lookup enable row level security;
 
 create policy ai_usage_public_read on ai_razpisi.ai_usage as permissive for select to anon, authenticated using (true);
-create policy companies_public_read on ai_razpisi.companies as permissive for select to anon, authenticated using (true);
 create policy data_source_health_public_read on ai_razpisi.data_source_health as permissive for select to public using (true);
-create policy de_minimis_records_public_read on ai_razpisi.de_minimis_records as permissive for select to anon, authenticated using (true);
-create policy grant_matches_public_read on ai_razpisi.grant_matches as permissive for select to anon, authenticated using (true);
 create policy grants_public_read on ai_razpisi.grants as permissive for select to anon, authenticated using (true);
 create policy "anon lahko zabelezi interes" on ai_razpisi.plan_interest as permissive for insert to anon with check (true);
 create policy skd_lookup_public_read on ai_razpisi.skd_lookup as permissive for select to public using (true);
 
 -- ── Pravice (RLS sam ne zadostuje: service_role potrebuje izrecen GRANT) ──
 
+grant select, insert, delete on ai_razpisi.ai_assistant_calls to service_role;
 grant insert, select, update on ai_razpisi.ai_usage to service_role;
 grant select on ai_razpisi.ai_usage to anon, authenticated;
 grant delete, insert, select, update on ai_razpisi.companies to service_role;
-grant select on ai_razpisi.companies to anon, authenticated;
 grant delete, insert, select, update on ai_razpisi.crawl_log to service_role;
 grant select on ai_razpisi.crawl_log to anon, authenticated;
 grant delete, insert, select, update on ai_razpisi.data_source_health to service_role;
 grant select on ai_razpisi.data_source_health to anon, authenticated;
 grant delete, insert, select, update on ai_razpisi.de_minimis_records to service_role;
-grant select on ai_razpisi.de_minimis_records to anon, authenticated;
 grant delete, insert, select, update on ai_razpisi.grant_matches to service_role;
-grant select on ai_razpisi.grant_matches to anon, authenticated;
 grant delete, insert, select, update on ai_razpisi.grant_sources to service_role;
 grant select on ai_razpisi.grant_sources to anon, authenticated;
 grant delete, insert, select, update on ai_razpisi.grants to service_role;

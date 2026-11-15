@@ -1,4 +1,9 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import type { Database } from "../_shared/database.types.ts";
+
+const makeClient = (url: string, key: string) =>
+  createClient<Database, "ai_razpisi">(url, key, { db: { schema: "ai_razpisi" } });
+type Db = ReturnType<typeof makeClient>;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,14 +16,14 @@ const corsHeaders = {
 // Supabase secreta AI_DAILY_TOKEN_BUDGET, privzeto 300.000 žetonov/dan.
 const DAILY_TOKEN_BUDGET = Number(Deno.env.get("AI_DAILY_TOKEN_BUDGET")) || 300_000;
 
-async function checkAiBudget(supabase: ReturnType<typeof createClient>): Promise<{ ok: boolean; used: number }> {
+async function checkAiBudget(supabase: Db): Promise<{ ok: boolean; used: number }> {
   const today = new Date().toISOString().slice(0, 10);
   const { data } = await supabase.from("ai_usage").select("input_tokens, output_tokens").eq("usage_date", today).maybeSingle();
   const used = Number(data?.input_tokens || 0) + Number(data?.output_tokens || 0);
   return { ok: used < DAILY_TOKEN_BUDGET, used };
 }
 
-async function recordAiUsage(supabase: ReturnType<typeof createClient>, inputTokens: number, outputTokens: number) {
+async function recordAiUsage(supabase: Db, inputTokens: number, outputTokens: number) {
   const today = new Date().toISOString().slice(0, 10);
   const { data, error: selectError } = await supabase.from("ai_usage").select("input_tokens, output_tokens, request_count").eq("usage_date", today).maybeSingle();
   if (selectError) console.error("ai_usage select napaka:", selectError.message);
@@ -44,7 +49,7 @@ async function callerHash(req: Request): Promise<string> {
 }
 
 // Vrne sporočilo za uporabnika, če je omejitev presežena, sicer zabeleži klic in vrne null.
-async function checkRateLimit(supabase: ReturnType<typeof createClient>, req: Request, companyId: string | null): Promise<string | null> {
+async function checkRateLimit(supabase: Db, req: Request, companyId: string | null): Promise<string | null> {
   try {
     const hash = await callerHash(req);
     const hourAgo = new Date(Date.now() - 3600_000).toISOString();
@@ -98,7 +103,7 @@ Deno.serve(async (req) => {
     if (!message) return json({ error: "Manjka message" }, 400);
     if (message.length > 2000) return json({ error: "Sporočilo je predolgo (največ 2000 znakov)" }, 400);
 
-    const supabase = createClient(supabaseUrl, serviceRoleKey, { db: { schema: "ai_razpisi" } });
+    const supabase = makeClient(supabaseUrl, serviceRoleKey);
 
     const budget = await checkAiBudget(supabase);
     if (!budget.ok) {
