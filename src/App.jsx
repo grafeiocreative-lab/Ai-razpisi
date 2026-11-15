@@ -1,15 +1,16 @@
 import { useState, useEffect, useRef } from "react";
 import {
   LayoutGrid,FileText,User,Bell,Calendar,Bot,Search,
-  ChevronRight,ChevronDown,X,ExternalLink,Bookmark,Check,Filter,
+  ChevronRight,ChevronDown,X,ExternalLink,Bookmark,Check,
   BarChart3,Globe,MapPin,Building2,TrendingUp,
   Zap,Shield,Loader2,ArrowRight,Cpu,Leaf,FlaskConical,Users,
-  Building,GraduationCap,ChevronLeft,Pencil,Timer,Eye,Lock,
-  Layers,MessageSquare,BellRing,Database,FileSearch,ArrowUpRight,
-  Minus,CircleCheck,CircleX,ChevronUp,Menu,Archive,
+  Building,GraduationCap,ChevronLeft,
+  Layers,MessageSquare,Database,FileSearch,
+  Minus,CircleCheck,Menu,Archive,
 } from "lucide-react";
 import{createClient}from"@supabase/supabase-js";
 import logoIcon from"./assets/logo-icon.png";
+import{scoreGrant}from"../supabase/functions/_shared/scoring.ts";
 const sb=import.meta.env.VITE_SUPABASE_URL
   ?createClient(import.meta.env.VITE_SUPABASE_URL,import.meta.env.VITE_SUPABASE_ANON_KEY,{db:{schema:"ai_razpisi"}})
   :null;
@@ -300,7 +301,7 @@ function HowItWorks({go,onStart}){
               {src:"KMU, regija in de minimis",what:"Velikost podjetja, lokacija in preostali de minimis prostor se preverijo proti pogojem razpisa.",Icon:Shield},
               {src:"AI razlaga",what:"Uradno besedilo razpisa prevedemo v razumljiv jezik, brez pravniškega žargona.",Icon:MessageSquare},
             ]},
-        ].map((step,si)=>(
+        ].map((step)=>(
           <div key={step.num} style={{...card,padding:isMobile?"24px 18px":"32px 30px",marginBottom:20}}>
             <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:18,paddingBottom:14,borderBottom:`1px solid ${c.border}`}}>
               <span style={{fontSize:13,fontWeight:700,color:c.olive,...tnum}}>{step.num}</span>
@@ -554,6 +555,10 @@ function Onboarding({onComplete,onBack}){
     const sectionLabel=Object.fromEntries((sections||[]).map(s=>[s.code,s.descriptor_sl]));
     setSkdList((classes||[]).map(cl=>({...cl,sectionLabel:sectionLabel[cl.section_code]||""})));
   })();return()=>{active=false;};},[step]);
+  const e=parseInt(emp)||0,r=parseFloat(rev)||0;
+  const kmu=e<10&&r<2?"MIKRO":e<50&&r<10?"MALO":e<250&&r<50?"SREDNJE":"VELIKO";
+  const dmRecs=jodpResult?.records||[];const dmReceived=dmRecs.reduce((s,r)=>s+(Number(r.amount)||0),0);const dmFree=Math.max(0,300000-dmReceived);
+  const co=ajpesResult?.company;
   useEffect(()=>{if(step!==6)return;let active=true;(async()=>{
     const today=new Date().toISOString();
     const{data}=await sb.from("grants").select("id,title,eligible_sectors,eligible_company_sizes,is_de_minimis,eligible_regions,raw_summary,requirements,source_url,eligibility").in("status",["open","upcoming"]).or(`deadline_at.is.null,deadline_at.gte.${today}`).limit(200);
@@ -572,12 +577,9 @@ function Onboarding({onComplete,onBack}){
     }
   })();return()=>{active=false;};},[step]);
   useEffect(()=>{if(step!==2)return;setAjpesStatus("pending");setJodpStatus("pending");setAjpesResult(null);setJodpResult(null);const started=Date.now();const minShow=900;(async()=>{const[ajpes,jodp]=await Promise.allSettled([sb.functions.invoke("fetch-ajpes",{body:{registration_number:iv}}),sb.functions.invoke("fetch-jodp",{body:{registration_number:iv}})]);if(jodp.status==="fulfilled"){setJodpResult(jodp.value.data);setJodpStatus(jodp.value.data?.ok===false?"error":"ok");}else setJodpStatus("error");let company=ajpes.status==="fulfilled"?ajpes.value.data?.company:null;if(!company){const{data}=await sb.from("companies").select("*").eq("registration_number",iv).maybeSingle();company=data;}if(company){setAjpesResult({ok:true,company});setAjpesStatus("ok");}else setAjpesStatus("error");const wait=Math.max(0,minShow-(Date.now()-started));setTimeout(()=>setStep(3),wait);})();},[step]);
-  const e=parseInt(emp)||0,r=parseFloat(rev)||0;
-  const kmu=e<10&&r<2?"MIKRO":e<50&&r<10?"MALO":e<250&&r<50?"SREDNJE":"VELIKO";
   const kmuOk=e<250&&r<50;const toggleI=id=>{const s=new Set(sel);s.has(id)?s.delete(id):s.add(id);setSel(s);};
-  const dmRecs=jodpResult?.records||[];const dmReceived=dmRecs.reduce((s,r)=>s+(Number(r.amount)||0),0);const dmFree=Math.max(0,300000-dmReceived);
   const btn={width:"100%",height:52,borderRadius:radius.md,border:"none",background:c.graphite,color:c.white,fontSize:15,fontWeight:600,fontFamily:f,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8};
-  const co=ajpesResult?.company;const mc={name:co?.company_name||"Podjetje ni najdeno v PRS cache",noMaticna:co?.source==="vies",maticna:co?.registration_number||iv,taxNumber:co?.tax_number||"—",address:co?.address||"—",region:co?.region||co?.municipality||"—",nuts:co?.nuts||"—",legalForm:co?.legal_form||"—",founded:co?.founded_year||"—",age:co?.founded_year?new Date().getFullYear()-co.founded_year:"—",skdMain:co?.main_activity_code||"—",skdMainLabel:co?.main_activity_name||"—",skdOther:[]};
+  const mc={name:co?.company_name||"Podjetje ni najdeno v PRS cache",noMaticna:co?.source==="vies",maticna:co?.registration_number||iv,taxNumber:co?.tax_number||"—",address:co?.address||"—",region:co?.region||co?.municipality||"—",nuts:co?.nuts||"—",legalForm:co?.legal_form||"—",founded:co?.founded_year||"—",age:co?.founded_year?new Date().getFullYear()-co.founded_year:"—",skdMain:co?.main_activity_code||"—",skdMainLabel:co?.main_activity_name||"—",skdOther:[]};
 
   if(step===1) return(<div style={{minHeight:"100vh",background:c.ivory,fontFamily:f,display:"flex",alignItems:"center",justifyContent:"center",padding:isMobile?"64px 16px 24px":24}}><div style={{width:"100%",maxWidth:480,textAlign:"center"}}><button onClick={onBack} style={{position:"absolute",top:20,left:20,background:"none",border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:6,fontSize:13,color:c.t2,fontFamily:f}}><ChevronLeft size={18}/>Nazaj</button><div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginBottom:32}}><img src={logoIcon} alt="AI Razpisi" style={{width:44,height:44,borderRadius:radius.sm}}/><span style={{fontSize:20,fontWeight:700,color:c.t1}}>RAZPISI</span></div><h1 style={{fontSize:isMobile?25:28,fontWeight:700,lineHeight:1.15,color:c.t1,marginBottom:8}}>Vpišite matično ali davčno<br/>številko podjetja</h1><p style={{fontSize:15,color:c.t2,marginBottom:32}}>Sistem samodejno pridobi podatke iz AJPES registra, de minimis evidenco in preveri davčni status.</p><div style={{display:"flex",flexDirection:isMobile?"column":"row",gap:10}}><input ref={ir} value={iv} onChange={e=>setIv(e.target.value.replace(/\D/g,""))} placeholder="npr. 1234567000" style={{flex:1,height:56,border:`2px solid ${iv.length>=8?c.olive:c.border}`,borderRadius:radius.md,padding:"0 20px",fontSize:17,fontFamily:"monospace",color:c.t1,background:c.white,outline:"none",letterSpacing:".04em",minWidth:0}} onKeyDown={e=>{if(e.key==="Enter"&&iv.length>=8)setStep(2);}}/><button onClick={()=>{if(iv.length>=8)setStep(2);}} style={{...btn,width:isMobile?"100%":"auto",padding:"0 28px",height:56,background:iv.length>=8?c.graphite:`${c.graphite}30`}}>Naprej <ArrowRight size={18}/></button></div>{iv.length===8&&<p style={{fontSize:12,color:c.olive,textAlign:"left",marginTop:8,marginBottom:0}}>Davčna številka (8 mest): sistem jo samodejno pretvori v matično.</p>}{iv.length===10&&<p style={{fontSize:12,color:c.olive,textAlign:"left",marginTop:8,marginBottom:0}}>Matična številka (10 mest): format je pravilen.</p>}{iv.length>0&&iv.length!==8&&iv.length!==10&&<p style={{fontSize:12,color:c.amber,textAlign:"left",marginTop:8,marginBottom:0}}>Davčna ima 8 mest · matična ima 10 mest ({iv.length}/8 ali 10).</p>}</div></div>);
 
@@ -1038,91 +1040,7 @@ function effectiveGrantStatus(row){
   return row.status||"open";
 }
 
-// Deljena med scoreGrant() tu in identično kopijo v supabase/functions/compute-matches —
-// obe morata ostati usklajeni, sicer se prikazan in dejansko shranjen match razidejo.
-const SKD_STOPWORDS=new Set(["in","ali","za","na","po","do","iz","pri","ter","ki","ni","je","se","ne","kot","tudi","oz","itd","dejavnosti","dejavnost","storitve","storitev","drugo","druge","drugih"]);
-function activityMatches(hay,skdLabel){
-  if(!skdLabel)return false;
-  const stems=[...new Set(skdLabel.toLowerCase().replace(/[.,()–-]/g," ").split(/\s+/).filter(w=>w.length>=5&&!SKD_STOPWORDS.has(w)).map(w=>w.slice(0,6)))];
-  return stems.some(st=>hay.includes(st));
-}
-// Kdo lahko kandidira: razred prijavitelja iz pravne oblike in oddelek SKD iz šifre dejavnosti ("K62.10" → "K").
-// Ista logika je v supabase/functions/compute-matches (obe morata ostati usklajeni).
-const skdSection=code=>/^[A-S]/i.test(String(code||""))?String(code)[0].toUpperCase():null;
-function applicantClasses(legalForm,skdCode){
-  const lf=String(legalForm||"").toLowerCase();
-  const out=[];
-  if(/s\.p\.|samostojni podjetnik/.test(lf))out.push("sp");
-  else if(/d\.o\.o|d\.d\.|d\.n\.o|k\.d\.|družba|poslovna enota/.test(lf))out.push("podjetja");
-  else if(/zavod|društvo|ustanova|zadruga/.test(lf))out.push("nevladne");
-  else out.push("podjetja","sp");
-  if(skdSection(skdCode)==="A")out.push("kmetije");
-  return out;
-}
-function scoreGrant(row,profile){
-  const tags=row.eligible_sectors||[];
-  const sizes=row.eligible_company_sizes||[];
-  // Razširi iskalno besedilo na summary in zahteve: tam je največ eligibility info
-  const hay=[...tags,row.title||"",row.raw_summary||"",row.requirements||"",row.plain_language_summary||""].join(" ").toLowerCase();
-  let s=50;
-  if(profile){
-    const kws={
-      digi:["digitalizacij","digital","informatiz","e-poslovan","it rešit"],
-      green:["zeleni","okolj","trajnost","podnebj","ekolo","obnovljiv","co2","emisij","energetsk"],
-      export:["izvoz","internacionalizacij","tuj trg","mednarod","eures"],
-      rd:["inovacij","razvoj","raziskov","r&d","tehnolog","patent","startup","zagonsk"],
-      employ:["zaposlov","delovno mest","kadr","brezposel","usposab na del"],
-      energy:["energetik","energij","obnovljiv vir","toplotn","sončn","fotovoltai","biomasa"],
-      tourism:["turizem","turistič","prenočitev","gostinst"],
-      edu:["izobra","usposab","kompetenc","znanj","šolanj","štipendij"],
-      agri:["kmetij","ribiš","gozdarst","živinorej","sadjarst","vinogradn"],
-      culture:["kultur","umetnost","avdiovizual","film","glasb"],
-    };
-    for(const[id,ks]of Object.entries(kws)){
-      if(profile.interests?.includes(id)&&ks.some(k=>hay.includes(k)))s+=15;
-    }
-    // Samoizbrana dejavnost (SKD label, glej Onboarding): groba primerjava ključnih besed
-    // iz uradnega SKD naziva z besedilom razpisa — ista "stem" tehnika kot kws zgoraj
-    // (npr. "programiranje"→"progra" ujame tudi "programske","programski" ipd.).
-    if(activityMatches(hay,profile.skdLabel))s+=18;
-    // Kdo lahko kandidira (AI-izluščeno v scrape-grants): razpisi za raziskovalne organizacije, kmetije, NVO ali občane
-    // podjetju ne ustrezajo, zato dobijo velik odbitek. Razpis brez podatka (eligibility = null) ostane nevtralen.
-    const el=row.eligibility;
-    if(el){
-      const ap=el.applicants||[];
-      if(ap.length){
-        const cls=applicantClasses(profile.legalForm,profile.skdCode);
-        if(ap.some(a=>cls.includes(a)))s+=8;
-        else if(!(cls.includes("sp")&&ap.includes("podjetja")))s-=35;
-      }
-      const sec=el.sectors||[];
-      if(sec.length){const cs=skdSection(profile.skdCode);if(cs)s+=sec.includes(cs)?12:-30;else s-=10;}
-    }
-    // Ujemanje velikosti podjetja
-    const sizeMap={MIKRO:"micro",MALO:"small",MSP:"small",SREDNJE:"medium",VELIKO:"large"};
-    const compSize=sizeMap[profile.kmu]||null;
-    if(sizes.length>0&&compSize){
-      if(sizes.includes(compSize)||(compSize==="micro"&&sizes.includes("small")))s+=10;
-      else if(!sizes.includes("large"))s-=20;
-    } else if(tags.some(t=>t==="MSP")&&profile.kmu==="VELIKO"){
-      s-=40;
-    }
-    // De minimis
-    if(row.is_de_minimis)s+=profile.dmFree>0?5:-20;
-    // Regija
-    const er=row.eligible_regions||[];
-    if(er.length>0&&profile.region){
-      const m=er.some(r=>r.toLowerCase().includes((profile.region||"").toLowerCase())||(profile.region||"").toLowerCase().includes(r.toLowerCase()));
-      if(!m)s-=25;
-    }
-  }else{
-    s+=Math.min(30,tags.length*6)+(row.is_de_minimis?5:0);
-  }
-  // Razpis, pri katerem upravičenci še niso preverjeni (nov, čaka na razvrstitev), ne sme veljati za ujemanje (< 60).
-  if(profile&&row.eligibility===null)s=Math.min(s,55);
-  return Math.min(95,Math.max(10,s));
-}
-
+// Ocenjevanje ujemanja je v skupnem modulu (isti kot v edge funkciji compute-matches).
 function mapGrant(row,profile){
   const tags=[...(row.eligible_sectors||[]),...(row.is_de_minimis?["de minimis"]:[])].slice(0,5);
   const title=String(row.title||"Neimenovan razpis");
@@ -1515,13 +1433,13 @@ function Dashboard({maticna,profile}){
 /*  APP ROUTER                                        */
 /* ═══════════════════════════════════════════════════ */
 export default function App(){
-  if(!sb)return(<div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui",color:"#333"}}><div style={{textAlign:"center"}}><h2>Manjkajo okoljske spremenljivke</h2><p style={{color:"#666"}}>VITE_SUPABASE_URL in VITE_SUPABASE_ANON_KEY nista nastavljeni.</p></div></div>);
   // ?admin=1 skoči naravnost na Dashboard (ki nato sam odpre skrit Admin pogled) —
   // brez tega bi moral obiskovalec najprej skozi onboarding, da bi sploh prišel do Dashboarda.
   const [mode,setMode]=useState(()=>new URLSearchParams(window.location.search).get("admin")?"dashboard":"landing");
   const [maticna,setMaticna]=useState("1234567000");
   const [profile,setProfile]=useState(null);
   const go=p=>{setMode(p);window.scrollTo?.(0,0);};
+  if(!sb)return(<div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui",color:"#333"}}><div style={{textAlign:"center"}}><h2>Manjkajo okoljske spremenljivke</h2><p style={{color:"#666"}}>VITE_SUPABASE_URL in VITE_SUPABASE_ANON_KEY nista nastavljeni.</p></div></div>);
   if(mode==="landing") return <Landing go={go} onStart={()=>go("onboarding")}/>;
   if(mode==="kako") return <HowItWorks go={go} onStart={()=>go("onboarding")}/>;
   if(mode==="cenik") return <Pricing go={go} onStart={()=>go("onboarding")}/>;

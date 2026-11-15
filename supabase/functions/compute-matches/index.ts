@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { scoreGrantDetailed } from "../_shared/scoring.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -95,8 +96,8 @@ Deno.serve(async (req) => {
 
   // Izračunaj score za vsak razpis
   const matches = verified.map(g => {
-    const { score, breakdown } = scoreGrant(g, profile);
-    return { grant_id: g.id, score, breakdown };
+    const { score, reasons, penalties } = scoreGrantDetailed(g, profile);
+    return { grant_id: g.id, score, breakdown: { base: 50, reasons, penalties, final: score } };
   });
 
   // Shrani v grant_matches (upsert)
@@ -129,183 +130,6 @@ Deno.serve(async (req) => {
     errors,
   });
 });
-
-interface GrantRow {
-  id: string;
-  title: string;
-  eligible_sectors: string[];
-  eligible_regions: string[];
-  eligible_company_sizes: string[];
-  is_de_minimis: boolean;
-  raw_summary: string | null;
-  requirements: string | null;
-  plain_language_summary: string | null;
-  eligibility: { applicants?: string[]; sectors?: string[] } | null;
-}
-
-interface Profile {
-  interests: string[];
-  kmu: string;
-  dmFree: number;
-  region: string | null;
-  skdLabel: string | null;
-  skdCode: string | null;
-  legalForm: string | null;
-}
-
-// Kdo lahko kandidira: ista logika kot v src/App.jsx (applicantClasses, skdSection).
-const skdSection = (code: string | null | undefined) => /^[A-S]/i.test(String(code || "")) ? String(code)[0].toUpperCase() : null;
-function applicantClasses(legalForm: string | null | undefined, skdCode: string | null | undefined): string[] {
-  const lf = String(legalForm || "").toLowerCase();
-  const out: string[] = [];
-  if (/s\.p\.|samostojni podjetnik/.test(lf)) out.push("sp");
-  else if (/d\.o\.o|d\.d\.|d\.n\.o|k\.d\.|družba|poslovna enota/.test(lf)) out.push("podjetja");
-  else if (/zavod|društvo|ustanova|zadruga/.test(lf)) out.push("nevladne");
-  else out.push("podjetja", "sp");
-  if (skdSection(skdCode) === "A") out.push("kmetije");
-  return out;
-}
-
-// Ista tehnika kot identična kopija activityMatches() v src/App.jsx — obe morata ostati
-// usklajeni, sicer se prikazan (frontend fallback) in dejansko shranjen (ta funkcija) match razidejo.
-const SKD_STOPWORDS = new Set(["in", "ali", "za", "na", "po", "do", "iz", "pri", "ter", "ki", "ni", "je", "se", "ne", "kot", "tudi", "oz", "itd", "dejavnosti", "dejavnost", "storitve", "storitev", "drugo", "druge", "drugih"]);
-function activityMatches(hay: string, skdLabel: string | null | undefined): boolean {
-  if (!skdLabel) return false;
-  const stems = [...new Set(
-    skdLabel.toLowerCase().replace(/[.,()–-]/g, " ").split(/\s+/)
-      .filter(w => w.length >= 5 && !SKD_STOPWORDS.has(w))
-      .map(w => w.slice(0, 6))
-  )];
-  return stems.some(st => hay.includes(st));
-}
-
-function scoreGrant(row: GrantRow, profile: Record<string, unknown>): { score: number; breakdown: Record<string, unknown> } {
-  const p = profile as unknown as Profile;
-  const tags = row.eligible_sectors || [];
-  const sizes = row.eligible_company_sizes || [];
-  const hay = [
-    ...tags,
-    row.title || "",
-    row.raw_summary || "",
-    row.requirements || "",
-    row.plain_language_summary || "",
-  ].join(" ").toLowerCase();
-
-  let s = 50;
-  const reasons: string[] = [];
-  const penalties: string[] = [];
-
-  const interestLabels: Record<string, string> = {
-    digi: "digitalizacija", green: "zeleni prehod", export: "izvoz", rd: "R&D in inovacije",
-    employ: "zaposlovanje", energy: "energetika", tourism: "turizem", edu: "izobraževanje",
-    agri: "kmetijstvo", culture: "kultura",
-  };
-
-  const kws: Record<string, string[]> = {
-    digi:    ["digitalizacij", "digital", "informatiz", "e-poslovan", "it rešit"],
-    green:   ["zeleni", "okolj", "trajnost", "podnebj", "ekolo", "obnovljiv", "co2", "emisij", "energetsk"],
-    export:  ["izvoz", "internacionalizacij", "tuj trg", "mednarod", "eures"],
-    rd:      ["inovacij", "razvoj", "raziskov", "r&d", "tehnolog", "patent", "startup", "zagonsk"],
-    employ:  ["zaposlov", "delovno mest", "kadr", "brezposel", "usposab na del"],
-    energy:  ["energetik", "energij", "obnovljiv vir", "toplotn", "sončn", "fotovoltai", "biomasa"],
-    tourism: ["turizem", "turistič", "prenočitev", "gostinst"],
-    edu:     ["izobra", "usposab", "kompetenc", "znanj", "šolanj", "štipendij"],
-    agri:    ["kmetij", "ribiš", "gozdarst", "živinorej", "sadjarst", "vinogradn"],
-    culture: ["kultur", "umetnost", "avdiovizual", "film", "glasb"],
-  };
-
-  for (const [id, ks] of Object.entries(kws)) {
-    if (p.interests?.includes(id) && ks.some(k => hay.includes(k))) {
-      s += 15;
-      reasons.push(`Interes „${interestLabels[id] ?? id}“ se ujema z vsebino razpisa`);
-    }
-  }
-
-  if (activityMatches(hay, p.skdLabel)) {
-    s += 18;
-    reasons.push(`Dejavnost „${p.skdLabel}“ se ujema z vsebino razpisa`);
-  }
-
-  // Kdo lahko kandidira (AI-izluščeno v scrape-grants). Brez podatka ostane razpis nevtralen.
-  const el = row.eligibility;
-  if (el) {
-    const ap = el.applicants || [];
-    if (ap.length) {
-      const cls = applicantClasses(p.legalForm, p.skdCode);
-      if (ap.some(a => cls.includes(a))) {
-        s += 8;
-        reasons.push("Podjetje spada med upravičence razpisa");
-      } else if (!(cls.includes("sp") && ap.includes("podjetja"))) {
-        s -= 35;
-        penalties.push("Razpis ni namenjen tej vrsti prijavitelja");
-      }
-    }
-    const sec = el.sectors || [];
-    if (sec.length) {
-      const cs = skdSection(p.skdCode);
-      if (cs) {
-        if (sec.includes(cs)) { s += 12; reasons.push("Dejavnost podjetja ustreza razpisu"); }
-        else { s -= 30; penalties.push("Razpis je omejen na druge dejavnosti"); }
-      } else {
-        s -= 10;
-        penalties.push("Razpis je omejen na določene dejavnosti, dejavnost podjetja ni znana");
-      }
-    }
-  }
-
-  // Velikost podjetja
-  const sizeMap: Record<string, string> = { MIKRO: "micro", MALO: "small", MSP: "small", SREDNJE: "medium", VELIKO: "large" };
-  const compSize = sizeMap[p.kmu] || null;
-  if (sizes.length > 0 && compSize) {
-    if (sizes.includes(compSize) || (compSize === "micro" && sizes.includes("small"))) {
-      s += 10;
-      reasons.push("Velikost podjetja ustreza razpisu");
-    } else if (!sizes.includes("large")) {
-      s -= 20;
-      penalties.push("Velikost podjetja ne ustreza razpisu");
-    }
-  } else if (tags.some(t => t === "MSP") && p.kmu === "VELIKO") {
-    s -= 40;
-    penalties.push("Razpis je namenjen MSP, podjetje je veliko");
-  }
-
-  // De minimis
-  if (row.is_de_minimis) {
-    if (p.dmFree > 0) {
-      s += 5;
-      reasons.push("De minimis prostor je na voljo");
-    } else {
-      s -= 20;
-      penalties.push("De minimis kvota je izčrpana");
-    }
-  }
-
-  // Regija
-  const er = row.eligible_regions || [];
-  if (er.length > 0 && p.region) {
-    const matches = er.some(r =>
-      r.toLowerCase().includes(p.region!.toLowerCase()) ||
-      p.region!.toLowerCase().includes(r.toLowerCase())
-    );
-    if (!matches) {
-      s -= 25;
-      penalties.push(`Razpis je omejen na regije: ${er.join(", ")}`);
-    } else {
-      reasons.push("Regija ustreza");
-    }
-  }
-
-  // Razpis, pri katerem upravičenci še niso preverjeni (nov, čaka na razvrstitev), ne sme veljati za ujemanje (< 60).
-  if (row.eligibility === null || row.eligibility === undefined) {
-    s = Math.min(s, 55);
-    penalties.push("Upravičenci razpisa še niso preverjeni");
-  }
-
-  return {
-    score: Math.min(95, Math.max(10, s)),
-    breakdown: { base: 50, reasons, penalties, final: Math.min(95, Math.max(10, s)) },
-  };
-}
 
 function json(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload, null, 2), {

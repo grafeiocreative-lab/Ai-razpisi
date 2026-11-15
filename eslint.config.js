@@ -17,5 +17,9 @@ export default defineConfig([
       globals: globals.browser,
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
+    rules: {
+      // Znan vzorec v obstoječi kodi (nastavitev stanja ob zagonu učinka); ostane viden kot opozorilo.
+      'react-hooks/set-state-in-effect': 'warn',
+    },
   },
 ])
