@@ -1,8 +1,8 @@
 name: Refresh grants
 
+# Dnevni tek je zdaj v Supabase Cron (pg_cron, job "scrape-grants-daily", 05:15 UTC), ker GitHub cron
+# zamuja za več ur. Ta tok ostane za ročni zagon (workflow_dispatch) in kot rezerva.
 on:
-  schedule:
-    - cron: "15 5 * * *"
   workflow_dispatch:
 
 jobs:
