@@ -120,6 +120,39 @@ Deno.serve(async (req) => {
       return json({ ok: true, ai_summaries: processed, errors });
     }
 
+    // Primerjava modela na že razvrščenih razpisih: nič se ne shrani, rezultat je ujemanje s trenutno razvrstitvijo.
+    if (reqBody?.only === "eligibility_eval") {
+      if (!anthropicKey) return json({ ok: false, error: "Missing ANTHROPIC_API_KEY" }, 500);
+      const model = String(reqBody.model || MODEL_ELIGIBILITY);
+      const limit = Math.min(Math.max(Number(reqBody.limit) || 30, 1), 60);
+      const { data: rows } = await supabase
+        .from("grants")
+        .select("id, title, provider, raw_summary, requirements, eligible_sectors, eligibility")
+        .not("eligibility", "is", null)
+        .in("status", ["open", "upcoming"])
+        .limit(limit);
+      const same = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
+      let agreeApplicants = 0, agreeSectors = 0, total = 0, inTok = 0, outTok = 0, calls = 0;
+      const diffs: unknown[] = [];
+      const errs: string[] = [];
+      for (const g of rows ?? []) {
+        try {
+          const r = await classifyEligibility(anthropicKey, g, model, String(reqBody.effort || "low"));
+          const cur = g.eligibility as { applicants?: string[]; sectors?: string[] };
+          const okA = same(r.eligibility.applicants, cur.applicants ?? []);
+          const okS = same(r.eligibility.sectors, cur.sectors ?? []);
+          total++; calls++; inTok += r.inputTokens; outTok += r.outputTokens;
+          if (okA) agreeApplicants++;
+          if (okS) agreeSectors++;
+          if (!okA || !okS) diffs.push({ title: String(g.title).slice(0, 70), trenutno: cur, model: r.eligibility });
+        } catch (e) {
+          errs.push(`${String(g.title).slice(0, 50)}: ${String(e).slice(0, 200)}`);
+        }
+      }
+      if (calls > 0) await recordAiUsage(supabase, inTok, outTok, calls);
+      return json({ ok: true, model, total, agreeApplicants, agreeSectors, tokens: { in: inTok, out: outTok }, diffs, errors: errs });
+    }
+
     if (reqBody?.only === "eligibility") {
       if (!anthropicKey) return json({ ok: false, error: "Missing ANTHROPIC_API_KEY" }, 500);
       const limit = Math.min(Math.max(Number(reqBody.limit) || 40, 1), 150);
@@ -428,7 +461,7 @@ async function summarizeGrant(
       "content-type": "application/json",
     },
     body: JSON.stringify({
-      model: "claude-sonnet-5",
+      model: MODEL_SUMMARY,
       max_tokens: 500,
       system: systemPrompt,
       messages: [{ role: "user", content: userPrompt }],
@@ -468,6 +501,10 @@ async function summarizeGrant(
 // ── Kdo lahko kandidira ────────────────────────────────────────────────────
 // Večina razpisov ni namenjenih navadnemu podjetju (raziskovalne organizacije, kmetije, NVO, občani).
 // Brez tega podatka vsi razpisi dobijo enako izhodiščno oceno in vsa podjetja vidijo skoraj isti seznam.
+// Model za posamezno nalogo (prepisljiv s skrivnostmi AI_MODEL_ELIGIBILITY in AI_MODEL_SUMMARY, brez novega deploya).
+const MODEL_ELIGIBILITY = Deno.env.get("AI_MODEL_ELIGIBILITY") || "claude-sonnet-5";
+const MODEL_SUMMARY = Deno.env.get("AI_MODEL_SUMMARY") || "claude-sonnet-5";
+
 const APPLICANT_CODES = ["podjetja", "sp", "kmetije", "raziskovalne", "nevladne", "javni", "fizicne"];
 const SECTOR_LETTERS = "ABCDEFGHIJKLMNOPQRS".split("");
 
@@ -533,7 +570,9 @@ async function extractEligibility(
 
 async function classifyEligibility(
   apiKey: string,
-  grant: { title: string; provider: string | null; raw_summary: string | null; requirements: string | null; eligible_sectors: string[] | null }
+  grant: { title: string; provider: string | null; raw_summary: string | null; requirements: string | null; eligible_sectors: string[] | null },
+  model: string = MODEL_ELIGIBILITY,
+  effort: string = "low"
 ): Promise<{ eligibility: { applicants: string[]; sectors: string[] }; inputTokens: number; outputTokens: number }> {
   const systemPrompt = `Iz besedila javnega razpisa v Sloveniji določiš, kdo lahko kandidira. Odgovoriš SAMO z JSON objektom, brez razlage. Ne ugibaj: kar iz besedila ali naslova ni razvidno, pusti prazno.`;
   const opis = [grant.raw_summary, grant.requirements].filter(Boolean).join("\n\n").substring(0, 4500) || "(opisa ni, sklepaj samo iz naslova)";
@@ -548,14 +587,30 @@ async function classifyEligibility(
     signal: AbortSignal.timeout(30_000),
     headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
     body: JSON.stringify({
-      model: "claude-sonnet-5",
-      max_tokens: 200,
+      model,
+      max_tokens: 1500,
       system: systemPrompt,
+      // Izhod po shemi: odgovor je vedno veljaven JSON z dovoljenimi vrednostmi (brez razčlenjevanja z regularnim izrazom).
+      output_config: {
+        effort,
+        format: {
+          type: "json_schema",
+          schema: {
+            type: "object",
+            properties: {
+              applicants: { type: "array", items: { type: "string", enum: APPLICANT_CODES } },
+              sectors: { type: "array", items: { type: "string", enum: SECTOR_LETTERS } },
+            },
+            required: ["applicants", "sectors"],
+            additionalProperties: false,
+          },
+        },
+      },
       messages: [{ role: "user", content: userPrompt }],
     }),
   });
   if (!res.ok) {
-    throw new Error(`Anthropic API HTTP ${res.status}: ${(await res.text()).substring(0, 200)}`);
+    throw new Error(`Anthropic API HTTP ${res.status}: ${(await res.text()).substring(0, 300)}`);
   }
   const data = await res.json();
   if (data.stop_reason === "refusal") throw new Error("Anthropic API je zavrnil zahtevo (refusal)");
