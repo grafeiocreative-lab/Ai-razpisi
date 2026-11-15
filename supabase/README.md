@@ -35,5 +35,12 @@ v `functions/_shared/database.types.ts` (osveži: `supabase gen types typescript
 
 ## Edge funkcije
 
-Deploy: `supabase functions deploy <ime> --project-ref cseifhrfmemvizwbmyjd --no-verify-jwt --use-api` (CLI 2.x).
-SQL na živi bazi: `supabase db query --linked "..."`.
+Supabase CLI 3.x (nadgrajen 15. 11. 2026). Ciljni projekt vedno navedi izrecno z `--remote=cseifhrfmemvizwbmyjd`:
+
+- Deploy: `supabase functions deploy <ime> --remote=cseifhrfmemvizwbmyjd --no-verify-jwt --use-api --yes`
+- SQL (samo branje, brez potrditve): `supabase db query --remote=cseifhrfmemvizwbmyjd --read-only "select ..."`
+- SQL (spreminja): isti ukaz z `--yes` namesto `--read-only`
+- Tipi baze: `supabase gen types typescript --remote=cseifhrfmemvizwbmyjd --schema ai_razpisi > supabase/functions/_shared/database.types.ts`
+
+CLI 3 vsako spremembo na gostovanem projektu zahteva potrditi; brez terminala to pomeni `--yes`. Stari `--linked` in `--project-ref`
+še delujeta, a izpišeta opozorilo. Brez izrecnega `--remote=<ref>` ukaz cilja na povezan projekt (`supabase projects list`, stolpec LINKED).
